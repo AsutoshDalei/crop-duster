@@ -22,7 +22,6 @@ const TURN_RATE = 0.75;
 const CLIMB_RATE = 9;
 const CLIMB_EASE = 1.8;
 const BANK_EASE = 5;
-const MAX_ROLL = 0.45;
 const MAX_DUST = 130;
 const SUN_DIR = { x: -0.35, y: 0.62, z: -0.7 };
 const DEEP_SKY = [40, 118, 190];
@@ -234,21 +233,12 @@ function makeCam() {
   const cy = Math.cos(cam.yaw);
   const sp = Math.sin(CAM_PITCH);
   const cp = Math.cos(CAM_PITCH);
-  const roll = bankInput * MAX_ROLL;
-  const cr = Math.cos(roll);
-  const sr = Math.sin(roll);
-  const r0x = cy;
-  const r0y = 0;
-  const r0z = -sy;
-  const u0x = -sp * sy;
-  const u0y = cp;
-  const u0z = -sp * cy;
-  const rx = r0x * cr - u0x * sr;
-  const ry = r0y * cr - u0y * sr;
-  const rz = r0z * cr - u0z * sr;
-  const ux = u0x * cr + r0x * sr;
-  const uy = u0y * cr + r0y * sr;
-  const uz = u0z * cr + r0z * sr;
+  const rx = cy;
+  const ry = 0;
+  const rz = -sy;
+  const ux = -sp * sy;
+  const uy = cp;
+  const uz = -sp * cy;
   const ox = (Math.random() - 0.5) * shake * 1.4;
   const oy = (Math.random() - 0.5) * shake * 1.4;
   return {
@@ -388,47 +378,18 @@ function fillWorldPoly(c, worldPts, baseColor, dist, alpha) {
   ctx.stroke();
 }
 
-function horizonSample(c, ang) {
-  const dx = Math.sin(ang);
-  const dz = Math.cos(ang);
-  const x = dx * c.rx + dz * c.rz;
-  const y = dx * c.ux + dz * c.uz;
-  const z = dx * c.fx + dz * c.fz;
-  return {
-    x: viewW / 2 + (focal * x) / z,
-    y: viewH / 2 - (focal * y) / z
-  };
-}
-
 function drawSky(c) {
-  const p1 = horizonSample(c, cam.yaw - 0.7);
-  const p2 = horizonSample(c, cam.yaw + 0.7);
-  const span = p2.x - p1.x;
-  const yL = p1.y + ((0 - p1.x) / span) * (p2.y - p1.y);
-  const yR = p1.y + ((viewW - p1.x) / span) * (p2.y - p1.y);
-
+  const horizonY = Math.round(viewH / 2 + focal * Math.tan(CAM_PITCH));
   const altT = Math.min(1, plane.y / 400);
   const top = lerpColor(SKY_TOP, DEEP_SKY, altT);
-  const grad = ctx.createLinearGradient(0, 0, 0, Math.max(1, (yL + yR) / 2));
-  grad.addColorStop(0, rgb(top));
-  grad.addColorStop(1, rgb(SKY_HORIZON));
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(viewW, 0);
-  ctx.lineTo(viewW, yR);
-  ctx.lineTo(0, yL);
-  ctx.closePath();
-  ctx.fill();
+  const sky = ctx.createLinearGradient(0, 0, 0, Math.max(1, horizonY));
+  sky.addColorStop(0, rgb(top));
+  sky.addColorStop(1, rgb(SKY_HORIZON));
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, viewW, Math.max(0, horizonY));
 
   ctx.fillStyle = rgb(FOG_COLOR);
-  ctx.beginPath();
-  ctx.moveTo(0, yL);
-  ctx.lineTo(viewW, yR);
-  ctx.lineTo(viewW, viewH + 1);
-  ctx.lineTo(0, viewH + 1);
-  ctx.closePath();
-  ctx.fill();
+  ctx.fillRect(0, Math.max(0, horizonY), viewW, viewH - Math.max(0, horizonY));
 }
 
 function drawSun(c) {
