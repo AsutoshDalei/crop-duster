@@ -208,6 +208,23 @@ with correct perspective — the technical foundation.
 - **Exit criteria:** full playthrough from title → takeoff → contract complete or
   fail → restart, with correct HUD readouts throughout.
 
+**Implementation notes (post Stage 4):**
+- **Explicit fail rules (as required by this stage's plan):**
+  - WIN evaluated first each frame: all contract fields ≥ target → `COMPLETE`.
+  - FAIL (crash): transition from airborne to ground with `speed > 15 m/s` or
+    `descent rate > 4 m/s`. Gentle touchdown (slower/flatter) is safe — needed
+    for the refill loop.
+  - FAIL (fertilizer): tank empty **and** all 3 refills consumed **and** at
+    least one contract field still below target.
+- Contract = fields `[1, 6, 9, 14]` at 80% target; refill budget = 3 (charged on
+  refill *completion*); tank 120k units, spray 900 units/s.
+- Score = coverage (≤600) + efficiency deposited/released (≤200) + time
+  (≤200, −1 pt per 2 s); best score wins-only via `localStorage` (try/catch).
+- HUD: contract panel top-left (F1–F4 progress + refills), tank gauge bar
+  bottom-left, contract fields outlined + numbered on the minimap.
+- End screens live in `game.js` — the optional `hud.js` split stays deferred
+  (plan marks module split optional).
+
 ### Stage 5 — Polish (Visual)
 **Goal:** Juice and readability, still zero-dependency.
 
@@ -320,6 +337,6 @@ Requested during Stage 1 review; not yet scheduled into stage exit criteria.
 | 1 — Pseudo-3D engine core | ✅ Done (2026-10-07) — playtest passed |
 | 2 — World building | ✅ Done (2026-10-07) — playtest passed |
 | 3 — Crop-dusting mechanics | ✅ Done (2026-10-07) — playtest passed |
-| 4 — Game flow & HUD | ⬜ Not started |
+| 4 — Game flow & HUD | ✅ Done (2026-10-07) — playtest passed |
 | 5 — Polish | ⬜ Not started |
 | 6 — Deployment & docs | ⬜ Not started |
