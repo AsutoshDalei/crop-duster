@@ -109,6 +109,7 @@ function setState(next) {
   if (state === 'PLAYING') {
     playTime = 0;
     resetFlight();
+    resetSpray();
   }
 }
 
@@ -167,6 +168,8 @@ function update(dt) {
   cam.y += (ty - cam.y) * k;
   cam.z += (tz - cam.z) * k;
   cam.yaw = wrapAngle(cam.yaw + wrapAngle(plane.heading - cam.yaw) * k);
+
+  updateSpray(dt);
 }
 
 function makeCam() {
@@ -247,7 +250,7 @@ function fogT(dist) {
   return t * t * (3 - 2 * t);
 }
 
-function fillWorldPoly(c, worldPts, baseColor, dist) {
+function fillWorldPoly(c, worldPts, baseColor, dist, alpha) {
   const camPts = [];
   for (let i = 0; i < worldPts.length; i++) {
     const p = worldPts[i];
@@ -280,7 +283,8 @@ function fillWorldPoly(c, worldPts, baseColor, dist) {
   }
   if (maxX < 0 || minX > viewW || maxY < 0 || minY > viewH) return;
 
-  const color = rgb(lerpColor(baseColor, FOG_COLOR, fogT(dist)));
+  const mixed = lerpColor(baseColor, FOG_COLOR, fogT(dist));
+  const color = alpha === undefined ? rgb(mixed) : rgb(mixed, alpha);
   ctx.beginPath();
   ctx.moveTo(screen[0].x, screen[0].y);
   for (let i = 1; i < screen.length; i++) {
@@ -404,9 +408,12 @@ function drawDebug() {
   let hdg = Math.round((plane.heading * 180) / Math.PI) % 360;
   if (hdg < 0) hdg += 360;
 
+  const tankPct = Math.round((tank.current / tank.capacity) * 100);
+  const spraying = keys.has('Space') && tank.current > 0;
   const lines = [
     'ALT  ' + alt.toFixed(1) + ' m      SPD  ' + spd.toFixed(0) + ' km/h      HDG  ' + String(hdg).padStart(3, '0') + '°',
-    'THR  ' + Math.round(plane.throttle * 100) + '%      VS  ' + (plane.vs >= 0 ? '+' : '') + plane.vs.toFixed(1) + ' m/s      T  ' + formatTime(playTime)
+    'THR  ' + Math.round(plane.throttle * 100) + '%      VS  ' + (plane.vs >= 0 ? '+' : '') + plane.vs.toFixed(1) + ' m/s      T  ' + formatTime(playTime),
+    'TANK ' + String(tankPct).padStart(3, ' ') + '%      ' + (spraying ? 'SPRAYING' : 'SPRAY OFF')
   ];
   ctx.font = '14px ' + FONT_STACK;
   ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
@@ -415,7 +422,7 @@ function drawDebug() {
   ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
   ctx.shadowBlur = 4;
   for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(lines[i], 14, viewH - 52 + i * 18);
+    ctx.fillText(lines[i], 14, viewH - 70 + i * 18);
   }
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
@@ -436,7 +443,9 @@ function render() {
   drawSky(c);
   drawTerrain(c);
   drawSurfaces(c);
+  drawCoverage(c);
   drawProps(c);
+  drawParticles(c);
   drawShadow(c);
   drawPlaneShape(c);
 
@@ -444,6 +453,7 @@ function render() {
     drawTitle();
   } else {
     drawDebug();
+    drawRefillPrompt();
     drawMinimap();
   }
 
