@@ -180,11 +180,11 @@ function update(dt) {
   climbInput = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
   bankInput += (rudder - bankInput) * Math.min(1, dt * BANK_EASE);
 
+  const onGround = plane.y < 0.6;
   const targetSpeed = plane.throttle * MAX_SPEED - climbInput * CLIMB_SPEED_COST;
   plane.speed += (targetSpeed - plane.speed) * Math.min(1, dt * SPEED_EASE);
-  plane.speed = Math.max(MIN_SPEED, Math.min(MAX_SPEED * 1.2, plane.speed));
+  plane.speed = Math.max(onGround ? 0 : MIN_SPEED, Math.min(MAX_SPEED * 1.2, plane.speed));
 
-  const onGround = plane.y < 0.6;
   const stallF = onGround
     ? 1
     : Math.max(0, Math.min(1, (plane.speed - STALL_SPEED) / STALL_BAND));
