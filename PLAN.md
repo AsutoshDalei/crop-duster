@@ -241,6 +241,20 @@ with correct perspective — the technical foundation.
 - Performance pass: cull off-screen geometry, cap particle counts, verify 60fps
   with everything on.
 
+**Implementation notes (post Stage 5):**
+- Split into two playtest waves: **Wave A (visual)** — clouds + fly-through
+  flash, sun glow, altitude sky shift, runway/touchdown dust, camera shake,
+  plane-art upgrade, end-screen backdrops, allocation-free `fillWorldPoly`;
+  **Wave B (physics)** — roll→turn coupling, climb/dive energy trade
+  (`CLIMB_SPEED_COST`), stall (authority loss + nose drop + blinking
+  `STALL` cue above 15 m), wind drift on the airframe.
+- Bank-tilt horizon view was implemented in Wave A and **removed after
+  playtest by decision** (level horizon reads better; see Stage 1 notes).
+- Crash thresholds (`>15 m/s`, `>4 m/s` descent) verified against the stall
+  model: full stall sink is 3 m/s, so stalls alone never false-crash.
+- Field state colors and windsock/wind-drift visualization were already
+  delivered in Stage 3; Stage 5 added the airframe half of wind.
+
 ### Stage 6 — Deployment & Documentation
 **Goal:** Live game + written docs.
 
@@ -324,11 +338,11 @@ Requested during Stage 1 review; not yet scheduled into stage exit criteria.
 
 | Item | Description | Proposed stage |
 |---|---|---|
-| Plane visual realism | Replace flat rect/ellipse overlay with a detailed rear-view silhouette (crop-duster profile: braced wings, tailwheel stance, exhaust, stripe livery), plus prop-blur disc and control-surface movement on bank/climb | Stage 5 (visual polish) |
-| Physics realism — speed coupling | Climb costs airspeed (energy trade), dive gains it; throttle-dependent acceleration curve instead of linear ease | Stage 5, or earlier if Stage 4 crash logic needs it |
-| Physics realism — banked turns | A/D rolls the plane first, turn rate follows bank angle (roll→turn coupling) instead of direct heading rate | Stage 5 |
-| Physics realism — stall | Below a minimum speed: reduced control authority, nose-drop tendency, warning cue before stall | Stage 5 |
-| Physics realism — wind | Steady wind vector drifting the plane and the spray particles (ties into Stage 3 wind-drift and windsock prop) | Stage 3–5 |
+| Plane visual realism | Replace flat rect/ellipse overlay with a detailed rear-view silhouette (crop-duster profile: braced wings, tailwheel stance, exhaust, stripe livery), plus prop-blur disc and control-surface movement on bank/climb | Stage 5 ✅ |
+| Physics realism — speed coupling | Climb costs airspeed (energy trade), dive gains it; throttle-dependent acceleration curve instead of linear ease | Stage 5 ✅ (energy trade via `CLIMB_SPEED_COST`) |
+| Physics realism — banked turns | A/D rolls the plane first, turn rate follows bank angle (roll→turn coupling) instead of direct heading rate | Stage 5 ✅ |
+| Physics realism — stall | Below a minimum speed: reduced control authority, nose-drop tendency, warning cue before stall | Stage 5 ✅ |
+| Physics realism — wind | Steady wind vector drifting the plane and the spray particles (ties into Stage 3 wind-drift and windsock prop) | Stage 3–5 ✅ |
 
 ---
 
@@ -341,5 +355,5 @@ Requested during Stage 1 review; not yet scheduled into stage exit criteria.
 | 2 — World building | ✅ Done (2026-10-07) — playtest passed |
 | 3 — Crop-dusting mechanics | ✅ Done (2026-10-07) — playtest passed |
 | 4 — Game flow & HUD | ✅ Done (2026-10-07) — playtest passed |
-| 5 — Polish | 🔶 In progress — Wave A visual done (bank-tilt reverted); Wave B physics + final playtest pending |
-| 6 — Deployment & docs | ⬜ Not started |
+| 5 — Polish | ✅ Code done (2026-10-07) — final combined playtest pending |
+| 6 — Deployment & docs | ✅ Code done (2026-10-07) — README written, Pages push pending final playtest |

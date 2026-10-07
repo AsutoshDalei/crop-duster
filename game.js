@@ -22,6 +22,13 @@ const TURN_RATE = 0.75;
 const CLIMB_RATE = 9;
 const CLIMB_EASE = 1.8;
 const BANK_EASE = 5;
+const CLIMB_SPEED_COST = 18;
+const MIN_SPEED = 5;
+const STALL_SPEED = 13;
+const STALL_BAND = 2;
+const STALL_SINK = 3;
+const STALL_WARN = 17;
+const AIRFRAME_WIND = 0.35;
 const MAX_DUST = 130;
 const SUN_DIR = { x: -0.35, y: 0.62, z: -0.7 };
 const DEEP_SKY = [40, 118, 190];
@@ -103,6 +110,7 @@ let climbInput = 0;
 let rudder = 0;
 let shake = 0;
 let cloudFlash = 0;
+let stallWarn = false;
 let rollingDustAcc = 0;
 const dust = [];
 
@@ -123,6 +131,7 @@ function resetFlight() {
   bankInput = 0;
   climbInput = 0;
   rudder = 0;
+  stallWarn = false;
   cam.x = plane.x - Math.sin(plane.heading) * CAM_BACK;
   cam.y = plane.y + CAM_HEIGHT;
   cam.z = plane.z - Math.cos(plane.heading) * CAM_BACK;
@@ -167,21 +176,36 @@ function update(dt) {
   if (keys.has('ArrowDown')) plane.throttle -= THROTTLE_RATE * dt;
   plane.throttle = Math.max(0, Math.min(1, plane.throttle));
 
-  const targetSpeed = plane.throttle * MAX_SPEED;
-  plane.speed += (targetSpeed - plane.speed) * Math.min(1, dt * SPEED_EASE);
-
   rudder = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
   climbInput = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
   bankInput += (rudder - bankInput) * Math.min(1, dt * BANK_EASE);
 
-  const turnEff = TURN_RATE * (0.35 + 0.65 * (plane.speed / MAX_SPEED));
-  plane.heading = wrapAngle(plane.heading + rudder * turnEff * dt);
+  const targetSpeed = plane.throttle * MAX_SPEED - climbInput * CLIMB_SPEED_COST;
+  plane.speed += (targetSpeed - plane.speed) * Math.min(1, dt * SPEED_EASE);
+  plane.speed = Math.max(MIN_SPEED, Math.min(MAX_SPEED * 1.2, plane.speed));
 
-  const targetVs = climbInput * CLIMB_RATE;
+  const onGround = plane.y < 0.6;
+  const stallF = onGround
+    ? 1
+    : Math.max(0, Math.min(1, (plane.speed - STALL_SPEED) / STALL_BAND));
+  stallWarn = !onGround && plane.y > 15 &&
+    (stallF === 0 || (plane.speed < STALL_WARN && plane.vs > -1));
+
+  const turnAuth = (0.35 + 0.65 * Math.min(1, plane.speed / MAX_SPEED)) *
+    (0.3 + 0.7 * stallF);
+  if (onGround) {
+    plane.heading = wrapAngle(plane.heading + rudder * TURN_RATE * turnAuth * dt);
+  } else {
+    plane.heading = wrapAngle(plane.heading + bankInput * TURN_RATE * turnAuth * dt);
+  }
+
+  let targetVs = climbInput * CLIMB_RATE * stallF;
+  if (!onGround) targetVs -= STALL_SINK * (1 - stallF);
   plane.vs += (targetVs - plane.vs) * Math.min(1, dt * CLIMB_EASE);
 
-  plane.x += Math.sin(plane.heading) * plane.speed * dt;
-  plane.z += Math.cos(plane.heading) * plane.speed * dt;
+  const windK = onGround ? 0 : AIRFRAME_WIND;
+  plane.x += (Math.sin(plane.heading) * plane.speed + WIND.x * windK) * dt;
+  plane.z += (Math.cos(plane.heading) * plane.speed + WIND.z * windK) * dt;
   const prevY = plane.y;
   const prevVs = plane.vs;
   plane.y += plane.vs * dt;
@@ -630,6 +654,12 @@ function drawDebug() {
   ctx.fillText('Esc — back to title', viewW / 2, viewH - 14);
 }
 
+function drawStallWarning() {
+  if (!stallWarn) return;
+  if (Math.floor(playTime * 5) % 2 === 0) return;
+  drawText('STALL', viewW / 2, viewH * 0.22, 36, '#ff9070');
+}
+
 function resetContract() {
   for (let i = 0; i < fields.length; i++) {
     fields[i].contract = false;
@@ -780,6 +810,7 @@ function render() {
     drawEndScreen();
   } else {
     drawDebug();
+    drawStallWarning();
     drawContractPanel();
     drawTankGauge();
     drawRefillPrompt();
