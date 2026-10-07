@@ -51,8 +51,8 @@ for (let r = 0; r < FIELD_ROWS; r++) {
 
 const PROPS = [];
 
-function addProp(type, x, z, w, h, variant) {
-  PROPS.push({ type: type, x: x, z: z, w: w, h: h, variant: variant || 0 });
+function addProp(type, x, z, w, h, variant, y) {
+  PROPS.push({ type: type, x: x, z: z, w: w, h: h, variant: variant || 0, y: y || 0 });
 }
 
 const interiorTrees = [
@@ -84,6 +84,18 @@ addProp('hay', 575, 825, 4, 4);
 addProp('hay', 925, 1175, 4, 4);
 addProp('hay', 1285, 1450, 4, 4);
 addProp('hay', 1285, 200, 4, 4);
+
+for (let i = 0; i < 10; i++) {
+  addProp(
+    'cloud',
+    -1700 + rnd() * 3400,
+    -1700 + rnd() * 3400,
+    170 + rnd() * 230,
+    50 + rnd() * 45,
+    rnd(),
+    140 + rnd() * 240
+  );
+}
 
 function worldDist(c, cx, cz) {
   const dx = cx - c.px;
@@ -262,6 +274,16 @@ function drawPropShape(s, wpx, hpx, prop) {
   if (t === 'hay') {
     ellipseAt(x, y - hpx * 0.5, wpx * 0.5, hpx * 0.5, '#d9b64e');
     ellipseAt(x, y - hpx * 0.5, wpx * 0.3, hpx * 0.3, '#c7a544');
+    return;
+  }
+
+  if (t === 'cloud') {
+    ellipseAt(x - wpx * 0.3, y + hpx * 0.1, wpx * 0.2, hpx * 0.3, '#f2f7fb');
+    ellipseAt(x + wpx * 0.3, y + hpx * 0.12, wpx * 0.22, hpx * 0.28, '#eef4f9');
+    ellipseAt(x - wpx * 0.06, y - hpx * 0.12, wpx * 0.28, hpx * 0.42, '#ffffff');
+    ellipseAt(x + wpx * 0.14, y - hpx * 0.04, wpx * 0.24, hpx * 0.34, '#ffffff');
+    ellipseAt(x - wpx * 0.18, y - hpx * 0.02, wpx * 0.2, hpx * 0.3, '#fbfdff');
+    ellipseAt(x, y + hpx * 0.22, wpx * 0.36, hpx * 0.18, '#dde7ef');
   }
 }
 
@@ -269,7 +291,7 @@ function drawProps(c) {
   const visible = [];
   for (let i = 0; i < PROPS.length; i++) {
     const prop = PROPS[i];
-    const p = toCamera(c, prop.x, 0, prop.z);
+    const p = toCamera(c, prop.x, prop.y, prop.z);
     if (p.z < NEAR || p.z > DRAW_DIST + 150) continue;
     const ppm = focal / p.z;
     const wpx = prop.w * ppm;
@@ -277,7 +299,10 @@ function drawProps(c) {
     if (hpx < 1) continue;
     const s = projectCam(p);
     if (s.x + wpx < -40 || s.x - wpx > viewW + 40) continue;
-    if (s.y < -40 || s.y - hpx > viewH + 40) continue;
+    const isCloud = prop.y > 0;
+    const top = isCloud ? s.y - hpx * 0.7 : s.y - hpx;
+    const bottom = isCloud ? s.y + hpx * 0.7 : s.y;
+    if (bottom < -40 || top > viewH + 40) continue;
     visible.push({ d: p.z, s: s, wpx: wpx, hpx: hpx, prop: prop });
   }
 
@@ -285,7 +310,11 @@ function drawProps(c) {
 
   for (let i = 0; i < visible.length; i++) {
     const v = visible[i];
+    if (v.prop.type === 'cloud') {
+      ctx.globalAlpha = Math.max(0.25, 1 - fogT(v.d) * 0.75);
+    }
     drawPropShape(v.s, v.wpx, v.hpx, v.prop);
+    ctx.globalAlpha = 1;
   }
 }
 

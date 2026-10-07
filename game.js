@@ -22,6 +22,10 @@ const TURN_RATE = 0.75;
 const CLIMB_RATE = 9;
 const CLIMB_EASE = 1.8;
 const BANK_EASE = 5;
+const MAX_ROLL = 0.45;
+const MAX_DUST = 130;
+const SUN_DIR = { x: -0.35, y: 0.62, z: -0.7 };
+const DEEP_SKY = [40, 118, 190];
 
 const CONTRACT_FIELDS = [1, 6, 9, 14];
 const CONTRACT_TARGET = 0.8;
@@ -98,6 +102,10 @@ const cam = {
 let bankInput = 0;
 let climbInput = 0;
 let rudder = 0;
+let shake = 0;
+let cloudFlash = 0;
+let rollingDustAcc = 0;
+const dust = [];
 
 function wrapAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -124,6 +132,8 @@ function resetFlight() {
 
 function setState(next) {
   state = next;
+  shake = 0;
+  cloudFlash = 0;
   document.body.classList.toggle('playing', state === 'PLAYING');
   if (state === 'PLAYING') {
     playTime = 0;
@@ -182,6 +192,10 @@ function update(dt) {
   }
   crashThisFrame = prevY > 0 && plane.y === 0 &&
     (plane.speed > CRASH_SPEED || prevVs < CRASH_VS);
+  if (prevY > 0 && plane.y === 0 && !crashThisFrame) {
+    spawnDust(plane.x, plane.z, 28, 9);
+    shake = Math.max(shake, 0.8);
+  }
   if (plane.x < WORLD.minX + 40) plane.x = WORLD.minX + 40;
   if (plane.x > WORLD.maxX - 40) plane.x = WORLD.maxX - 40;
   if (plane.z < WORLD.minZ + 40) plane.z = WORLD.minZ + 40;
@@ -196,6 +210,10 @@ function update(dt) {
   cam.z += (tz - cam.z) * k;
   cam.yaw = wrapAngle(cam.yaw + wrapAngle(plane.heading - cam.yaw) * k);
 
+  const rumble = plane.y === 0 && plane.speed > 4 ? Math.min(0.35, plane.speed / 120) : 0;
+  shake = Math.max(rumble, shake - dt * 2);
+  updateDust(dt);
+  updateCloudFlash();
   updateSpray(dt);
 
   if (contractDone()) {
@@ -216,16 +234,33 @@ function makeCam() {
   const cy = Math.cos(cam.yaw);
   const sp = Math.sin(CAM_PITCH);
   const cp = Math.cos(CAM_PITCH);
+  const roll = bankInput * MAX_ROLL;
+  const cr = Math.cos(roll);
+  const sr = Math.sin(roll);
+  const r0x = cy;
+  const r0y = 0;
+  const r0z = -sy;
+  const u0x = -sp * sy;
+  const u0y = cp;
+  const u0z = -sp * cy;
+  const rx = r0x * cr - u0x * sr;
+  const ry = r0y * cr - u0y * sr;
+  const rz = r0z * cr - u0z * sr;
+  const ux = u0x * cr + r0x * sr;
+  const uy = u0y * cr + r0y * sr;
+  const uz = u0z * cr + r0z * sr;
+  const ox = (Math.random() - 0.5) * shake * 1.4;
+  const oy = (Math.random() - 0.5) * shake * 1.4;
   return {
-    px: cam.x,
-    py: cam.y,
-    pz: cam.z,
-    rx: cy,
-    ry: 0,
-    rz: -sy,
-    ux: -sp * sy,
-    uy: cp,
-    uz: -sp * cy,
+    px: cam.x + rx * ox + ux * oy,
+    py: cam.y + ry * ox + uy * oy,
+    pz: cam.z + rz * ox + uz * oy,
+    rx: rx,
+    ry: ry,
+    rz: rz,
+    ux: ux,
+    uy: uy,
+    uz: uz,
     fx: sy * cp,
     fy: sp,
     fz: cy * cp
@@ -251,20 +286,15 @@ function projectCam(p) {
   };
 }
 
-function clipNear(pts) {
-  const out = [];
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % pts.length];
-    const aIn = a.z >= NEAR;
-    const bIn = b.z >= NEAR;
-    if (aIn) out.push(a);
-    if (aIn !== bIn) {
-      const t = (NEAR - a.z) / (b.z - a.z);
-      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: NEAR });
-    }
-  }
-  return out;
+const polyCam = [
+  { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 },
+  { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }
+];
+const polyClip = [];
+const polyScreen = [];
+for (let i = 0; i < 16; i++) {
+  polyClip.push({ x: 0, y: 0, z: 0 });
+  polyScreen.push({ x: 0, y: 0, z: 0 });
 }
 
 function lerpColor(a, b, t) {
@@ -290,31 +320,52 @@ function fogT(dist) {
 }
 
 function fillWorldPoly(c, worldPts, baseColor, dist, alpha) {
-  const camPts = [];
-  for (let i = 0; i < worldPts.length; i++) {
-    const p = worldPts[i];
-    camPts.push(toCamera(c, p[0], p[1], p[2]));
-  }
+  const n = worldPts.length;
   let allBehind = true;
-  for (let i = 0; i < camPts.length; i++) {
-    if (camPts[i].z >= NEAR) {
-      allBehind = false;
-      break;
-    }
+  for (let i = 0; i < n; i++) {
+    const wp = worldPts[i];
+    const p = polyCam[i];
+    const dx = wp[0] - c.px;
+    const dy = wp[1] - c.py;
+    const dz = wp[2] - c.pz;
+    p.x = dx * c.rx + dy * c.ry + dz * c.rz;
+    p.y = dx * c.ux + dy * c.uy + dz * c.uz;
+    p.z = dx * c.fx + dy * c.fy + dz * c.fz;
+    if (p.z >= NEAR) allBehind = false;
   }
   if (allBehind) return;
 
-  const clipped = clipNear(camPts);
-  if (clipped.length < 3) return;
+  let m = 0;
+  for (let i = 0; i < n; i++) {
+    const a = polyCam[i];
+    const b = polyCam[(i + 1) % n];
+    const aIn = a.z >= NEAR;
+    const bIn = b.z >= NEAR;
+    if (aIn) {
+      const o = polyClip[m++];
+      o.x = a.x;
+      o.y = a.y;
+      o.z = a.z;
+    }
+    if (aIn !== bIn) {
+      const t = (NEAR - a.z) / (b.z - a.z);
+      const o = polyClip[m++];
+      o.x = a.x + (b.x - a.x) * t;
+      o.y = a.y + (b.y - a.y) * t;
+      o.z = NEAR;
+    }
+  }
+  if (m < 3) return;
 
-  const screen = [];
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
-  for (let i = 0; i < clipped.length; i++) {
-    const s = projectCam(clipped[i]);
-    screen.push(s);
+  for (let i = 0; i < m; i++) {
+    const p = polyClip[i];
+    const s = polyScreen[i];
+    s.x = viewW / 2 + (focal * p.x) / p.z;
+    s.y = viewH / 2 - (focal * p.y) / p.z;
     if (s.x < minX) minX = s.x;
     if (s.x > maxX) maxX = s.x;
     if (s.y < minY) minY = s.y;
@@ -325,9 +376,9 @@ function fillWorldPoly(c, worldPts, baseColor, dist, alpha) {
   const mixed = lerpColor(baseColor, FOG_COLOR, fogT(dist));
   const color = alpha === undefined ? rgb(mixed) : rgb(mixed, alpha);
   ctx.beginPath();
-  ctx.moveTo(screen[0].x, screen[0].y);
-  for (let i = 1; i < screen.length; i++) {
-    ctx.lineTo(screen[i].x, screen[i].y);
+  ctx.moveTo(polyScreen[0].x, polyScreen[0].y);
+  for (let i = 1; i < m; i++) {
+    ctx.lineTo(polyScreen[i].x, polyScreen[i].y);
   }
   ctx.closePath();
   ctx.fillStyle = color;
@@ -337,16 +388,132 @@ function fillWorldPoly(c, worldPts, baseColor, dist, alpha) {
   ctx.stroke();
 }
 
+function horizonSample(c, ang) {
+  const dx = Math.sin(ang);
+  const dz = Math.cos(ang);
+  const x = dx * c.rx + dz * c.rz;
+  const y = dx * c.ux + dz * c.uz;
+  const z = dx * c.fx + dz * c.fz;
+  return {
+    x: viewW / 2 + (focal * x) / z,
+    y: viewH / 2 - (focal * y) / z
+  };
+}
+
 function drawSky(c) {
-  const horizonY = Math.round(viewH / 2 + focal * Math.tan(CAM_PITCH));
-  const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
-  sky.addColorStop(0, rgb(SKY_TOP));
-  sky.addColorStop(1, rgb(SKY_HORIZON));
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, viewW, Math.max(0, horizonY));
+  const p1 = horizonSample(c, cam.yaw - 0.7);
+  const p2 = horizonSample(c, cam.yaw + 0.7);
+  const span = p2.x - p1.x;
+  const yL = p1.y + ((0 - p1.x) / span) * (p2.y - p1.y);
+  const yR = p1.y + ((viewW - p1.x) / span) * (p2.y - p1.y);
+
+  const altT = Math.min(1, plane.y / 400);
+  const top = lerpColor(SKY_TOP, DEEP_SKY, altT);
+  const grad = ctx.createLinearGradient(0, 0, 0, Math.max(1, (yL + yR) / 2));
+  grad.addColorStop(0, rgb(top));
+  grad.addColorStop(1, rgb(SKY_HORIZON));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(viewW, 0);
+  ctx.lineTo(viewW, yR);
+  ctx.lineTo(0, yL);
+  ctx.closePath();
+  ctx.fill();
 
   ctx.fillStyle = rgb(FOG_COLOR);
-  ctx.fillRect(0, Math.max(0, horizonY), viewW, viewH - Math.max(0, horizonY));
+  ctx.beginPath();
+  ctx.moveTo(0, yL);
+  ctx.lineTo(viewW, yR);
+  ctx.lineTo(viewW, viewH + 1);
+  ctx.lineTo(0, viewH + 1);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawSun(c) {
+  const d = SUN_DIR;
+  const pc = toCamera(c, c.px + d.x * 8000, c.py + d.y * 8000, c.pz + d.z * 8000);
+  if (pc.z < NEAR) return;
+  const s = projectCam(pc);
+  if (s.x < -260 || s.x > viewW + 260 || s.y < -260 || s.y > viewH + 260) return;
+  const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 220);
+  g.addColorStop(0, 'rgba(255, 250, 230, 0.9)');
+  g.addColorStop(0.25, 'rgba(255, 244, 200, 0.4)');
+  g.addColorStop(1, 'rgba(255, 240, 190, 0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(s.x - 220, s.y - 220, 440, 440);
+}
+
+function spawnDust(x, z, count, spread) {
+  for (let i = 0; i < count; i++) {
+    if (dust.length >= MAX_DUST) return;
+    dust.push({
+      x: x + (Math.random() - 0.5) * spread,
+      y: 0.2 + Math.random() * 0.5,
+      z: z + (Math.random() - 0.5) * spread,
+      vx: (Math.random() - 0.5) * 3,
+      vy: 1 + Math.random() * 2.5,
+      vz: (Math.random() - 0.5) * 3,
+      life: 1,
+      r: 1 + Math.random() * 1.5
+    });
+  }
+}
+
+function updateDust(dt) {
+  if (plane.y === 0 && plane.speed > 4) {
+    rollingDustAcc += dt * 8;
+    while (rollingDustAcc >= 1) {
+      spawnDust(
+        plane.x - Math.sin(plane.heading) * 4,
+        plane.z - Math.cos(plane.heading) * 4,
+        1, 2
+      );
+      rollingDustAcc -= 1;
+    }
+  }
+  for (let i = dust.length - 1; i >= 0; i--) {
+    const p = dust[i];
+    p.x += (p.vx + WIND.x * 0.8) * dt;
+    p.y += p.vy * dt;
+    p.z += (p.vz + WIND.z * 0.8) * dt;
+    p.vy -= 2.5 * dt;
+    p.life -= dt * 0.9;
+    p.r += dt * 2.5;
+    if (p.life <= 0) dust.splice(i, 1);
+  }
+}
+
+function updateCloudFlash() {
+  let hit = 0;
+  for (let i = 0; i < PROPS.length; i++) {
+    const p = PROPS[i];
+    if (p.type !== 'cloud') continue;
+    if (Math.abs(plane.x - p.x) < p.w / 2 &&
+        Math.abs(plane.z - p.z) < p.w / 2 &&
+        Math.abs(plane.y - p.y) < p.h / 2 + 20) {
+      hit = 0.45;
+      break;
+    }
+  }
+  cloudFlash = Math.max(hit, cloudFlash - 0.03);
+}
+
+function drawDust(c) {
+  for (let i = 0; i < dust.length; i++) {
+    const p = dust[i];
+    const pc = toCamera(c, p.x, p.y, p.z);
+    if (pc.z < NEAR) continue;
+    const s = projectCam(pc);
+    if (s.x < -30 || s.x > viewW + 30 || s.y < -30 || s.y > viewH + 30) continue;
+    const r = (focal * p.r) / pc.z;
+    if (r < 0.5) continue;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(158, 134, 96, ' + Math.max(0, p.life * 0.35) + ')';
+    ctx.fill();
+  }
 }
 
 function drawShadow(c) {
@@ -375,40 +542,68 @@ function drawPlaneShape(c) {
   ctx.translate(0, climbInput * 4);
   ctx.rotate(bankInput * 0.45);
   ctx.scale(half, half);
-
   ctx.lineJoin = 'round';
 
-  ctx.fillStyle = '#8a6a1c';
-  ctx.fillRect(-0.42, -0.46, 0.84, 0.09);
-
-  ctx.fillStyle = '#f0c038';
-  ctx.fillRect(-1, -0.07, 2, 0.14);
-
-  ctx.fillStyle = '#d9a926';
+  ctx.fillStyle = 'rgba(255, 255, 255, ' + (0.05 + plane.throttle * 0.28) + ')';
   ctx.beginPath();
-  ctx.ellipse(0, 0.04, 0.17, 0.3, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, -0.04, 0.26, 0.26, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = '#f0c038';
-  ctx.fillRect(-0.035, -0.5, 0.07, 0.34);
-
-  ctx.fillStyle = '#e2b02e';
-  ctx.fillRect(-1, -0.07, 0.28, 0.14);
-  ctx.fillRect(0.72, -0.07, 0.28, 0.14);
-
-  ctx.fillStyle = '#2b2b2b';
-  ctx.fillRect(-1, -0.02, 2, 0.035);
-
-  ctx.fillStyle = '#9fd4ef';
   ctx.beginPath();
-  ctx.ellipse(0, -0.14, 0.1, 0.09, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, -0.02, 0.16, 0.3, 0, 0, Math.PI * 2);
   ctx.fill();
-
   ctx.strokeStyle = 'rgba(40, 30, 5, 0.55)';
   ctx.lineWidth = 0.02;
-  ctx.strokeRect(-1, -0.07, 2, 0.14);
-  ctx.strokeRect(-0.035, -0.5, 0.07, 0.34);
-  ctx.strokeRect(-0.42, -0.46, 0.84, 0.09);
+  ctx.stroke();
+
+  ctx.fillStyle = '#c8402c';
+  ctx.fillRect(-0.12, 0.08, 0.24, 0.045);
+
+  ctx.fillStyle = '#f0c038';
+  ctx.fillRect(-1, 0.05, 2, 0.11);
+  ctx.fillStyle = '#c8402c';
+  ctx.fillRect(-1, 0.14, 2, 0.02);
+  ctx.fillStyle = '#2b2b2b';
+  ctx.fillRect(-1, 0.05, 0.1, 0.11);
+  ctx.fillRect(0.9, 0.05, 0.1, 0.11);
+  ctx.strokeStyle = 'rgba(40, 30, 5, 0.55)';
+  ctx.strokeRect(-1, 0.05, 2, 0.11);
+
+  ctx.fillStyle = '#d9a926';
+  ctx.fillRect(-0.78, 0.05 + bankInput * 0.035, 0.3, 0.05);
+  ctx.fillRect(0.48, 0.05 - bankInput * 0.035, 0.3, 0.05);
+
+  ctx.strokeStyle = '#555555';
+  ctx.lineWidth = 0.03;
+  ctx.beginPath();
+  ctx.moveTo(-0.12, 0.16);
+  ctx.lineTo(-0.3, 0.33);
+  ctx.moveTo(0.12, 0.16);
+  ctx.lineTo(0.3, 0.33);
+  ctx.stroke();
+  ctx.fillStyle = '#222222';
+  ctx.beginPath();
+  ctx.ellipse(-0.3, 0.36, 0.05, 0.065, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0.3, 0.36, 0.05, 0.065, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#e2b02e';
+  ctx.fillRect(-0.42, -0.4 - climbInput * 0.03, 0.84, 0.07);
+  ctx.strokeStyle = 'rgba(40, 30, 5, 0.55)';
+  ctx.lineWidth = 0.02;
+  ctx.strokeRect(-0.42, -0.4 - climbInput * 0.03, 0.84, 0.07);
+
+  ctx.fillStyle = '#f0c038';
+  ctx.fillRect(-0.05, -0.72, 0.1, 0.36);
+  ctx.fillStyle = '#c8402c';
+  ctx.fillRect(-0.05, -0.72, 0.1, 0.07);
+  ctx.fillStyle = '#d9a926';
+  ctx.fillRect(-0.05 + bankInput * 0.035, -0.65, 0.1, 0.29);
+  ctx.strokeStyle = 'rgba(40, 30, 5, 0.55)';
+  ctx.strokeRect(-0.05, -0.72, 0.1, 0.36);
 
   ctx.restore();
 }
@@ -569,6 +764,11 @@ function drawTankGauge() {
 
 function drawEndScreen() {
   const parts = scoreParts();
+  ctx.fillStyle = 'rgba(8, 14, 6, 0.6)';
+  ctx.fillRect(viewW / 2 - 340, viewH * 0.2, 680, viewH * 0.6);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(viewW / 2 - 340, viewH * 0.2, 680, viewH * 0.6);
   if (state === 'COMPLETE') {
     drawText('CONTRACT COMPLETE', viewW / 2, viewH * 0.3, 52, '#9be87d');
     drawText('Score  ' + parts.total, viewW / 2, viewH * 0.42, 34, '#ffffff');
@@ -598,13 +798,20 @@ function render() {
   const c = makeCam();
 
   drawSky(c);
+  drawSun(c);
   drawTerrain(c);
   drawSurfaces(c);
   drawCoverage(c);
   drawProps(c);
   drawParticles(c);
+  drawDust(c);
   drawShadow(c);
   drawPlaneShape(c);
+
+  if (cloudFlash > 0.01) {
+    ctx.fillStyle = 'rgba(255, 255, 255, ' + Math.min(0.5, cloudFlash) + ')';
+    ctx.fillRect(0, 0, viewW, viewH);
+  }
 
   if (state === 'TITLE') {
     drawTitle();
