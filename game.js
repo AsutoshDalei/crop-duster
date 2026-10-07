@@ -41,8 +41,6 @@ const BEST_KEY = 'cropDusterBest';
 
 const SKY_TOP = [63, 151, 214];
 const SKY_HORIZON = [203, 232, 250];
-const GROUND_A = [111, 158, 70];
-const GROUND_B = [99, 143, 62];
 const FOG_COLOR = [198, 218, 233];
 const FOG_WARM = [236, 217, 194];
 
@@ -512,6 +510,7 @@ function drawSky(c) {
   ctx.fillRect(0, 0, viewW, skyBottom);
 
   drawCloudBank(horizonY);
+  drawBackdrop(horizonY);
 
   const hazeH = Math.min(140, Math.max(50, viewH * 0.14));
   const hazeY = Math.max(0, horizonY - hazeH);

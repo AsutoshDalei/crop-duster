@@ -385,7 +385,7 @@ runtime are allowed (they are still asset-free and dependency-free).
    fog onset (`FOG_START` 350 → 300 + smootherstep curve); per-poly fog color
    warmed toward the sun in the sun's screen direction.
 
-### Phase 2 — Ground & fields ⬜ Pending approval
+### Phase 2 — Ground & fields ✅ Implemented (2026-10-07) — playtest pending
 
 1. Kill the checkerboard: seeded per-cell color jitter (existing LCG) →
    patchwork-farmland look.
@@ -397,7 +397,8 @@ runtime are allowed (they are still asset-free and dependency-free).
 5. Fogged silhouette ridge / far tree line beyond map bounds as a backdrop
    (decorative only; plane is already clamped at bounds).
 
-### Phase 3 — Props ⬜ Pending approval
+### Phase 3 — Props ✅ Implemented (2026-10-07) — playtest pending
+Optional items (fence posts, power-line poles): **skipped by decision.**
 
 1. Shaded trees: 2-tone canopy lit by `SUN_DIR`, tapered trunk, 2–3 species
    shapes (round, poplar, clump).
@@ -433,7 +434,7 @@ shadow, exhaust smoke particles at high throttle.
 | Phase | Status |
 |---|---|
 | 1 — Sky & atmosphere | ✅ Implemented (2026-10-07) — playtest pending |
-| 2 — Ground & fields | ⬜ Awaiting approval |
-| 3 — Props | ⬜ Awaiting approval |
+| 2 — Ground & fields | ✅ Implemented (2026-10-07) — playtest pending |
+| 3 — Props | ✅ Implemented (2026-10-07) — playtest pending |
 | 4 — Airplane (3D model chosen) | ⬜ Awaiting approval |
 | 5 — Particles & screen FX | ⬜ Awaiting approval |
