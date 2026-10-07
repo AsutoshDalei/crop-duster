@@ -170,6 +170,18 @@ with correct perspective — the technical foundation.
 - **Exit criteria:** cover fields reliably at correct altitude; wasted spray at
   wrong altitude is visibly punished; refill loop works.
 
+**Implementation notes (post Stage 3):**
+- `spray.js` added (between `world.js` and `game.js` in script order).
+- Coverage model: **analytic scalar** per field (plan allowed grid *or* analytic);
+  streak visuals achieved with per-field rotated "wet strip" quads (cap 60/field),
+  not a 16×16 cell grid — same look, far fewer polys.
+- Refill is **landed-only** (parked on runway, speed < 3 m/s, 25%/s) — a
+  simplification of the plan's "landed or low pass".
+- Wind exists as a constant `WIND` vector affecting spray particles only;
+  airframe wind effect remains in the Backlog (§9).
+- `sprayStats {released, deposited, missed}` tracked for Stage 4 scoring.
+- `fillWorldPoly()` gained an optional alpha param (wet strips render translucent).
+
 ### Stage 4 — Game Flow & HUD
 **Goal:** A complete, winnable/losable game.
 
@@ -307,7 +319,7 @@ Requested during Stage 1 review; not yet scheduled into stage exit criteria.
 | 0 — Scaffold & deploy wiring | ✅ Done (2026-10-07) — live at https://asutoshdalei.github.io/crop-duster/ |
 | 1 — Pseudo-3D engine core | ✅ Done (2026-10-07) — playtest passed |
 | 2 — World building | ✅ Done (2026-10-07) — playtest passed |
-| 3 — Crop-dusting mechanics | ⬜ Not started |
+| 3 — Crop-dusting mechanics | ✅ Done (2026-10-07) — playtest passed |
 | 4 — Game flow & HUD | ⬜ Not started |
 | 5 — Polish | ⬜ Not started |
 | 6 — Deployment & docs | ⬜ Not started |
