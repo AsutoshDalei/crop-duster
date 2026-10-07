@@ -8,7 +8,7 @@ const FOV_Y = 1.22;
 const NEAR = 0.5;
 const CELL = 50;
 const DRAW_DIST = 1200;
-const FOG_START = 350;
+const FOG_START = 300;
 
 const CAM_BACK = 30;
 const CAM_HEIGHT = 10;
@@ -44,6 +44,7 @@ const SKY_HORIZON = [203, 232, 250];
 const GROUND_A = [111, 158, 70];
 const GROUND_B = [99, 143, 62];
 const FOG_COLOR = [198, 218, 233];
+const FOG_WARM = [236, 217, 194];
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -113,6 +114,8 @@ let cloudFlash = 0;
 let stallWarn = false;
 let rollingDustAcc = 0;
 const dust = [];
+const sunScreen = { front: false, x: 0, y: 0 };
+let cloudBankCv = null;
 
 function wrapAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -328,9 +331,9 @@ function rgb(c, alpha) {
 
 function fogT(dist) {
   let t = (dist - FOG_START) / (DRAW_DIST - FOG_START);
-  if (t < 0) t = 0;
-  if (t > 1) t = 1;
-  return t * t * (3 - 2 * t);
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
 function fillWorldPoly(c, worldPts, baseColor, dist, alpha) {
@@ -387,7 +390,22 @@ function fillWorldPoly(c, worldPts, baseColor, dist, alpha) {
   }
   if (maxX < 0 || minX > viewW || maxY < 0 || minY > viewH) return;
 
-  const mixed = lerpColor(baseColor, FOG_COLOR, fogT(dist));
+  const ft = fogT(dist);
+  let fr = FOG_COLOR[0];
+  let fg = FOG_COLOR[1];
+  let fb = FOG_COLOR[2];
+  if (sunScreen.front && ft > 0.02) {
+    const cxw = (minX + maxX) * 0.5;
+    const warmK = Math.max(0, 1 - Math.abs(cxw - sunScreen.x) / (viewW * 0.9)) * 0.6 * ft;
+    fr += (FOG_WARM[0] - fr) * warmK;
+    fg += (FOG_WARM[1] - fg) * warmK;
+    fb += (FOG_WARM[2] - fb) * warmK;
+  }
+  const mixed = [
+    Math.round(baseColor[0] + (fr - baseColor[0]) * ft),
+    Math.round(baseColor[1] + (fg - baseColor[1]) * ft),
+    Math.round(baseColor[2] + (fb - baseColor[2]) * ft)
+  ];
   const color = alpha === undefined ? rgb(mixed) : rgb(mixed, alpha);
   ctx.beginPath();
   ctx.moveTo(polyScreen[0].x, polyScreen[0].y);
@@ -402,32 +420,146 @@ function fillWorldPoly(c, worldPts, baseColor, dist, alpha) {
   ctx.stroke();
 }
 
-function drawSky(c) {
-  const horizonY = Math.round(viewH / 2 + focal * Math.tan(CAM_PITCH));
-  const altT = Math.min(1, plane.y / 400);
-  const top = lerpColor(SKY_TOP, DEEP_SKY, altT);
-  const sky = ctx.createLinearGradient(0, 0, 0, Math.max(1, horizonY));
-  sky.addColorStop(0, rgb(top));
-  sky.addColorStop(1, rgb(SKY_HORIZON));
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, viewW, Math.max(0, horizonY));
-
-  ctx.fillStyle = rgb(FOG_COLOR);
-  ctx.fillRect(0, Math.max(0, horizonY), viewW, viewH - Math.max(0, horizonY));
-}
-
-function drawSun(c) {
+function updateSun(c) {
   const d = SUN_DIR;
   const pc = toCamera(c, c.px + d.x * 8000, c.py + d.y * 8000, c.pz + d.z * 8000);
-  if (pc.z < NEAR) return;
+  if (pc.z < NEAR) {
+    sunScreen.front = false;
+    return;
+  }
   const s = projectCam(pc);
-  if (s.x < -260 || s.x > viewW + 260 || s.y < -260 || s.y > viewH + 260) return;
-  const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 220);
-  g.addColorStop(0, 'rgba(255, 250, 230, 0.9)');
-  g.addColorStop(0.25, 'rgba(255, 244, 200, 0.4)');
-  g.addColorStop(1, 'rgba(255, 240, 190, 0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(s.x - 220, s.y - 220, 440, 440);
+  sunScreen.front = true;
+  sunScreen.x = s.x;
+  sunScreen.y = s.y;
+}
+
+function buildCloudBank() {
+  const W = 2048;
+  const H = 160;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  let seed = 20261007;
+  const rr = function () {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  for (let i = 0; i < 10; i++) {
+    const cx = 170 + rr() * (W - 340);
+    const base = H - 14 - rr() * 26;
+    const scale = 0.7 + rr() * 0.8;
+    const count = 5 + Math.floor(rr() * 4);
+    for (let p = 0; p < count; p++) {
+      const pr = (20 + rr() * 34) * scale;
+      const px = cx + (rr() - 0.5) * 150 * scale;
+      const py = base - rr() * 50 * scale;
+      if (px < pr + 4 || px > W - pr - 4 || py < pr + 4) continue;
+      const grad = g.createRadialGradient(px, py, pr * 0.2, px, py, pr);
+      grad.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
+      grad.addColorStop(0.55, 'rgba(247, 251, 254, 0.5)');
+      grad.addColorStop(1, 'rgba(238, 245, 251, 0)');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(px, py, pr, 0, Math.PI * 2);
+      g.fill();
+    }
+    for (let p = 0; p < 3; p++) {
+      const pr = (24 + rr() * 30) * scale;
+      const px = cx + (rr() - 0.5) * 130 * scale;
+      const py = base - rr() * 14;
+      if (px < pr + 4 || px > W - pr - 4) continue;
+      const grad = g.createRadialGradient(px, py, pr * 0.2, px, py, pr);
+      grad.addColorStop(0, 'rgba(205, 219, 233, 0.5)');
+      grad.addColorStop(1, 'rgba(205, 219, 233, 0)');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(px, py, pr, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  return cv;
+}
+
+function drawCloudBank(horizonY) {
+  if (!cloudBankCv) cloudBankCv = buildCloudBank();
+  const tileW = Math.PI * 2 * focal;
+  const offset = -cam.yaw * focal;
+  const y = Math.round(horizonY - cloudBankCv.height) + 4;
+  ctx.globalAlpha = Math.max(0.35, Math.min(1, 1 - plane.y / 600));
+  let k = Math.floor(-offset / tileW);
+  while (k * tileW + offset < viewW) {
+    const x = k * tileW + offset;
+    if (x + tileW > 0) {
+      ctx.drawImage(cloudBankCv, Math.round(x), y, Math.ceil(tileW), cloudBankCv.height);
+    }
+    k++;
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawSky(c) {
+  const horizonY = Math.round(viewH / 2 + focal * Math.tan(CAM_PITCH));
+  const skyBottom = Math.max(1, horizonY);
+  const altT = Math.min(1, plane.y / 400);
+  const top = lerpColor(SKY_TOP, DEEP_SKY, altT);
+  const mid = lerpColor(top, SKY_HORIZON, 0.55);
+  const sky = ctx.createLinearGradient(0, 0, 0, skyBottom);
+  sky.addColorStop(0, rgb(top));
+  sky.addColorStop(0.6, rgb(mid));
+  sky.addColorStop(1, rgb(SKY_HORIZON));
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, viewW, skyBottom);
+
+  drawCloudBank(horizonY);
+
+  const hazeH = Math.min(140, Math.max(50, viewH * 0.14));
+  const hazeY = Math.max(0, horizonY - hazeH);
+  const haze = ctx.createLinearGradient(0, hazeY, 0, horizonY);
+  haze.addColorStop(0, 'rgba(198, 218, 233, 0)');
+  haze.addColorStop(1, 'rgba(198, 218, 233, 0.8)');
+  ctx.fillStyle = haze;
+  ctx.fillRect(0, hazeY, viewW, horizonY - hazeY);
+
+  if (sunScreen.front) {
+    const sx = sunScreen.x;
+    const sy = Math.min(Math.max(sunScreen.y, 0), horizonY);
+    const tr = Math.max(viewW, viewH) * 0.85;
+    const warm = ctx.createRadialGradient(sx, sy, 0, sx, sy, tr);
+    warm.addColorStop(0, 'rgba(255, 227, 172, 0.24)');
+    warm.addColorStop(0.4, 'rgba(255, 233, 189, 0.09)');
+    warm.addColorStop(1, 'rgba(255, 240, 205, 0)');
+    ctx.fillStyle = warm;
+    ctx.fillRect(0, 0, viewW, skyBottom);
+  }
+
+  ctx.fillStyle = rgb(FOG_COLOR);
+  ctx.fillRect(0, skyBottom, viewW, viewH - skyBottom);
+}
+
+function drawSun() {
+  if (!sunScreen.front) return;
+  const sx = sunScreen.x;
+  const sy = sunScreen.y;
+  if (sx < -300 || sx > viewW + 300 || sy < -300 || sy > viewH + 300) return;
+
+  const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 220);
+  glow.addColorStop(0, 'rgba(255, 250, 230, 0.9)');
+  glow.addColorStop(0.25, 'rgba(255, 244, 200, 0.4)');
+  glow.addColorStop(1, 'rgba(255, 240, 190, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(sx - 220, sy - 220, 440, 440);
+
+  const halo = ctx.createRadialGradient(sx, sy, 8, sx, sy, 44);
+  halo.addColorStop(0, 'rgba(255, 252, 235, 0.85)');
+  halo.addColorStop(1, 'rgba(255, 247, 214, 0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(sx - 44, sy - 44, 88, 88);
+
+  ctx.beginPath();
+  ctx.arc(sx, sy, 13, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 253, 242, 0.98)';
+  ctx.fill();
 }
 
 function spawnDust(x, z, count, spread) {
@@ -788,8 +920,9 @@ let fpsElapsed = 0;
 function render() {
   const c = makeCam();
 
+  updateSun(c);
   drawSky(c);
-  drawSun(c);
+  drawSun();
   drawTerrain(c);
   drawSurfaces(c);
   drawCoverage(c);

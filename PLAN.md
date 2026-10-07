@@ -357,3 +357,83 @@ Requested during Stage 1 review; not yet scheduled into stage exit criteria.
 | 4 — Game flow & HUD | ✅ Done (2026-10-07) — playtest passed |
 | 5 — Polish | ✅ Code done (2026-10-07) — final combined playtest pending |
 | 6 — Deployment & docs | ✅ Code done (2026-10-07) — README written, Pages push pending final playtest |
+
+---
+
+## 11. Refinement — Visual Realism Plan
+
+Approved 2026-10-07. **Render-only**: no gameplay, flight model, scoring,
+contract, or spray-math changes. Hard constraints unchanged — Canvas 2D +
+vanilla JS only, no packages, no build step, no binary/image/audio assets,
+GitHub Pages static hosting. Offscreen `<canvas>` sprite caches created at
+runtime are allowed (they are still asset-free and dependency-free).
+
+**Verification for every phase:**
+- `python3 -m http.server 8123` → manual playtest in browser.
+- Hold 60 fps (built-in counter, top-right) with everything enabled.
+- `jsc test_game.js` must stay green (tests never call draw code).
+
+### Phase 1 — Sky & atmosphere ✅ Implemented (2026-10-07) — playtest pending
+
+1. Multi-stop sky gradient (zenith → mid → horizon) with a warm radial tint
+   biased toward the sun's screen position.
+2. Real sun disc: crisp core + inner halo on top of the existing wide glow.
+3. Distant cloud-bank on the horizon: soft radial-gradient puffs pre-rendered
+   once to an offscreen canvas, tiled with yaw-based parallax (tile width =
+   `2π · focal` so the ±π yaw wrap is seamless), alpha-fading with altitude.
+4. Horizon haze band (transparent → fog color) softening cloud bases; softer
+   fog onset (`FOG_START` 350 → 300 + smootherstep curve); per-poly fog color
+   warmed toward the sun in the sun's screen direction.
+
+### Phase 2 — Ground & fields ⬜ Pending approval
+
+1. Kill the checkerboard: seeded per-cell color jitter (existing LCG) →
+   patchwork-farmland look.
+2. Dirt farm tracks / headland borders as flat quads along the field grid.
+3. Runway detail: asphalt tone variation, threshold rubber marks, aiming-point
+   markers, grass shoulders.
+4. Fields: per-field row orientation (alternate N-S/E-W), darker headland
+   ring, per-field base-color variance, subtle row-to-row noise.
+5. Fogged silhouette ridge / far tree line beyond map bounds as a backdrop
+   (decorative only; plane is already clamped at bounds).
+
+### Phase 3 — Props ⬜ Pending approval
+
+1. Shaded trees: 2-tone canopy lit by `SUN_DIR`, tapered trunk, 2–3 species
+   shapes (round, poplar, clump).
+2. Buildings as projected pseudo-3D boxes: hangar/barn draw a front + side
+   face from camera position (flat quads via existing `fillWorldPoly`, still
+   depth-sorted) — removes the cardboard-cutout look; silo gets a shaded side.
+3. Clouds as soft sprites: pre-render 2–3 soft radial-gradient puff textures
+   once at load (fixes hard ellipse edges and per-frame gradient cost).
+4. Hay bales: directional shading + contact shadow.
+5. Optional: field-edge fence posts + wire segments, power-line poles.
+
+### Phase 4 — Airplane ⬜ Pending approval — **decision: 3D polygonal model**
+
+True low-poly 3D model (~60–100 faces: fuselage tube, cowl + spinner, wings
+with dihedral, tail surfaces, gear struts), rotated by real pitch (derived
+from `vs`/`speed`), roll (`bankInput`) and heading, projected through the
+existing `toCamera`/`projectCam`, faces painter-sorted and lit from `SUN_DIR`.
+Adds: translucent prop disc with blur arcs, control-surface deflection, gear
+compression on touchdown + rolling wheels, heading-aligned wing-shaped ground
+shadow, exhaust smoke particles at high throttle.
+
+### Phase 5 — Particles & screen FX ⬜ Pending approval
+
+1. Sprite-cached soft dust/spray puffs (radial-gradient textures, rendered
+   once at load).
+2. Wheel smoke on touchdown; grass/dust blow-off during ground roll.
+3. Sun glare when the sun is on-screen; very subtle vignette.
+4. Perf pass: verify 60 fps, keep the no-allocation pattern of
+   `fillWorldPoly()`.
+
+### Refinement status
+
+| Phase | Status |
+|---|---|
+| 1 — Sky & atmosphere | ✅ Implemented (2026-10-07) — playtest pending |
+| 2 — Ground & fields | ⬜ Awaiting approval |
+| 3 — Props | ⬜ Awaiting approval |
+| 4 — Airplane (3D model chosen) | ⬜ Awaiting approval |
+| 5 — Particles & screen FX | ⬜ Awaiting approval |
