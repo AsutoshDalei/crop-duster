@@ -246,7 +246,7 @@ is: no build step, no external dependencies.)*
 
 | Stage | Status |
 |---|---|
-| 0 — Scaffold & deploy wiring | ⬜ Not started |
+| 0 — Scaffold & deploy wiring | ✅ Done (2026-10-07) — live at https://asutoshdalei.github.io/crop-duster/ |
 | 1 — Pseudo-3D engine core | ⬜ Not started |
 | 2 — World building | ⬜ Not started |
 | 3 — Crop-dusting mechanics | ⬜ Not started |
