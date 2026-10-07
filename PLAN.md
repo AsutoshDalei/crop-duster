@@ -109,8 +109,10 @@ with correct perspective — the technical foundation.
 - Ground quads are coplanar and non-overlapping, so they need no sort; the
   **generic depth-sorted renderable list** (for billboards, particles, props) is
   deferred to Stage 2 where it first becomes necessary.
-- Camera pitch is fixed (horizon stays level); camera roll for bank-tilt is a
-  Stage 5 polish item that extends `makeCam()`.
+- Camera pitch is fixed (horizon stays level). A Stage 5 camera roll/bank-tilt
+  was implemented in `makeCam()` and then **removed by decision after
+  playtest** — the level horizon reads better; plane-art banking on screen
+  stays (it's an overlay, not the view).
 - The flight model is intentionally "basic" per plan; realism upgrades are
   tracked in the Backlog (§9).
 
@@ -232,7 +234,8 @@ with correct perspective — the technical foundation.
 - Sun glare / lens tint; sky color shifts subtly with altitude.
 - Dust kick-up particles when taking off and landing on runway.
 - Wind drift visualization (windsock direction affects spray drift; light haze).
-- Subtle camera shake on ground contact; bank-tilt of the horizon when turning.
+- Subtle camera shake on ground contact. ~~Bank-tilt of the horizon when
+  turning~~ — implemented, then **removed by decision** (see Stage 1 notes).
 - Field state colors clearly readable from distance (e.g. brown/dark → lush green).
 - Title/game-over screen styling; simple typography (system fonts only).
 - Performance pass: cull off-screen geometry, cap particle counts, verify 60fps
@@ -338,5 +341,5 @@ Requested during Stage 1 review; not yet scheduled into stage exit criteria.
 | 2 — World building | ✅ Done (2026-10-07) — playtest passed |
 | 3 — Crop-dusting mechanics | ✅ Done (2026-10-07) — playtest passed |
 | 4 — Game flow & HUD | ✅ Done (2026-10-07) — playtest passed |
-| 5 — Polish | ⬜ Not started |
+| 5 — Polish | 🔶 In progress — Wave A visual done (bank-tilt reverted); Wave B physics + final playtest pending |
 | 6 — Deployment & docs | ⬜ Not started |
