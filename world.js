@@ -5,6 +5,8 @@ const START = { x: -700, y: 0, z: -1650, heading: 0 };
 
 const RUNWAY = { cx: -700, width: 45, z0: -1700, z1: -700 };
 
+const LAKE = { cx: -430, cz: -350, rx: 170, rz: 240 };
+
 const FARM_X0 = -100;
 const FARM_Z0 = 150;
 const FIELD_SIZE = 300;
@@ -15,10 +17,10 @@ const FIELD_COLS = 4;
 const LUSH_COLOR = [95, 143, 58];
 
 const CROPS = [
-  [216, 197, 106],
-  [185, 200, 78],
-  [111, 158, 70],
-  [138, 112, 72]
+  [126, 96, 66],
+  [112, 86, 58],
+  [138, 108, 76],
+  [120, 92, 62]
 ];
 
 let rngSeed = 20261007;
@@ -132,6 +134,11 @@ addProp('hay', 925, 1175, 4, 4);
 addProp('hay', 1285, 1450, 4, 4);
 addProp('hay', 1285, 200, 4, 4);
 
+addProp('house', 1305, 1420, 18, 8, 0, 0, 13);
+addProp('shed', 1315, 180, 26, 7, 0, 0, 12);
+addProp('coop', -215, 1450, 12, 5, 0, 0, 9);
+addProp('barn', -230, 300, 20, 9, 0, 0, 14);
+
 for (let i = 0; i < 10; i++) {
   addProp(
     'cloud',
@@ -165,6 +172,35 @@ TRACKS.push([-140, 110, -126, 1540]);
 TRACKS.push([1276, 110, 1290, 1540]);
 TRACKS.push([-677, -693, -133, -679]);
 TRACKS.push([-140, -693, -126, 110]);
+
+function treeSpotOK(x, z) {
+  if (x < -1750 || x > 1750 || z < -1750 || z > 1750) return false;
+  if (x > -280 && x < 1380 && z > -40 && z < 1620) return false;
+  if (x > -920 && x < -480 && z > -1820 && z < -580) return false;
+  const lkx = (x - LAKE.cx) / (LAKE.rx + 55);
+  const lkz = (z - LAKE.cz) / (LAKE.rz + 55);
+  if (lkx * lkx + lkz * lkz < 1) return false;
+  for (let i = 0; i < TRACKS.length; i++) {
+    const t = TRACKS[i];
+    if (x > t[0] - 50 && x < t[2] + 50 && z > t[1] - 50 && z < t[3] + 50) return false;
+  }
+  return true;
+}
+
+let groveCount = 0;
+for (let attempt = 0; attempt < 500 && groveCount < 24; attempt++) {
+  const gx = -1750 + rnd2() * 3500;
+  const gz = -1750 + rnd2() * 3500;
+  if (!treeSpotOK(gx, gz)) continue;
+  groveCount++;
+  const count = 3 + ((rnd2() * 4) | 0);
+  for (let k = 0; k < count; k++) {
+    const tx = gx + (rnd2() - 0.5) * 110;
+    const tz = gz + (rnd2() - 0.5) * 110;
+    if (!treeSpotOK(tx, tz)) continue;
+    addProp('tree', tx, tz, 9 + rnd2() * 8, 11 + rnd2() * 9, rnd2());
+  }
+}
 
 function fillGroundRect(c, x0, z0, x1, z1, color) {
   const dist = worldDist(c, (x0 + x1) / 2, (z0 + z1) / 2);
@@ -287,7 +323,182 @@ function drawTracks(c) {
   }
 }
 
+const CORN_H = 2.4;
+const CORN_DIST = 380;
+const CORN_FADE = 70;
+const CORN_STEP = 6;
+const CORN_HEAD = 14;
+let cornSprites = null;
+const cornBatch = [];
+
+function buildCornSprites() {
+  const list = [];
+  for (let v = 0; v < 2; v++) {
+    let seed = 910247 + v * 7717;
+    const rr = function () {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const W = 240;
+    const H = 96;
+    const cv = document.createElement('canvas');
+    cv.width = W;
+    cv.height = H;
+    const g = cv.getContext('2d');
+    for (let s = 0; s < 6; s++) {
+      const bx = 18 + s * 37 + rr() * 12;
+      const hh = H - 8 - rr() * 16;
+      const lean = (rr() - 0.5) * 9;
+      const midY = H - hh * 0.5;
+      g.strokeStyle = 'rgb(96, 132, 48)';
+      g.lineWidth = 3;
+      g.beginPath();
+      g.moveTo(bx, H);
+      g.quadraticCurveTo(bx + lean * 0.3, midY, bx + lean, H - hh);
+      g.stroke();
+      const leafCount = 4;
+      for (let l = 0; l < leafCount; l++) {
+        const side = l % 2 === 0 ? 1 : -1;
+        const ly = H - 16 - l * (hh / 5.4);
+        const lx = bx + lean * ((H - ly) / hh);
+        const dx = side * (13 + rr() * 9);
+        const dy = 7 + rr() * 6;
+        g.fillStyle = l % 2 === 0 ? 'rgb(112, 152, 58)' : 'rgb(92, 130, 48)';
+        g.beginPath();
+        g.moveTo(lx, ly);
+        g.quadraticCurveTo(lx + dx * 0.5, ly - dy * 0.9, lx + dx, ly - dy * 0.35);
+        g.quadraticCurveTo(lx + dx * 0.45, ly + dy * 0.35, lx, ly + 2);
+        g.closePath();
+        g.fill();
+      }
+      g.strokeStyle = 'rgb(186, 164, 96)';
+      g.lineWidth = 1.5;
+      for (let t = -2; t <= 2; t++) {
+        g.beginPath();
+        g.moveTo(bx + lean, H - hh);
+        g.lineTo(bx + lean + t * 3, H - hh - 6 + Math.abs(t) * 2);
+        g.stroke();
+      }
+    }
+    list.push(cv);
+  }
+  return list;
+}
+
+function drawCorn(c) {
+  if (!cornSprites) cornSprites = buildCornSprites();
+  cornBatch.length = 0;
+  const rows = 10;
+  const step = FIELD_SIZE / rows;
+  const bands = [0, 2, 4, 6, 8];
+  const offs = [-8, 8];
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
+    if (worldDist(c, (f.x0 + f.x1) / 2, (f.z0 + f.z1) / 2) > CORN_DIST + 220) continue;
+    let lineId = i * 32;
+    for (let bi = 0; bi < bands.length; bi++) {
+      for (let oi = 0; oi < offs.length; oi++) {
+        const base = bands[bi] * step + step / 2 + offs[oi];
+        let ax;
+        let az;
+        let bx;
+        let bz;
+        if (f.rowDir === 0) {
+          ax = f.x0 + base;
+          bx = ax;
+          az = f.z0 + CORN_HEAD;
+          bz = f.z1 - CORN_HEAD;
+        } else {
+          az = f.z0 + base;
+          bz = az;
+          ax = f.x0 + CORN_HEAD;
+          bx = f.x1 - CORN_HEAD;
+        }
+        if (worldDist(c, (ax + bx) / 2, (az + bz) / 2) > CORN_DIST + 150) continue;
+        const len = Math.sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+        const n = Math.floor(len / CORN_STEP);
+        if (n < 1) continue;
+        for (let k = 0; k < n; k++) {
+          const u = (k + 0.5 + (hash1(lineId * 97 + k) - 0.5) * 0.7) / n;
+          const wx = ax + (bx - ax) * u;
+          const wz = az + (bz - az) * u;
+          const cp = toCamera(c, wx, 0, wz);
+          if (cp.z < NEAR || cp.z > CORN_DIST) continue;
+          const s = projectCam(cp);
+          const hpx = (CORN_H * focal) / cp.z;
+          if (hpx < 1.6) continue;
+          if (s.x < -80 || s.x > viewW + 80 || s.y < 0 || s.y > viewH + 10) continue;
+          cornBatch.push({
+            z: cp.z,
+            img: cornSprites[hash1(lineId * 31 + k) < 0.5 ? 0 : 1],
+            x: s.x,
+            y: s.y,
+            w: (hpx * 240) / 96,
+            h: hpx
+          });
+        }
+        lineId++;
+      }
+    }
+  }
+  cornBatch.sort(function (a, b) { return b.z - a.z; });
+  for (let i = 0; i < cornBatch.length; i++) {
+    const e = cornBatch[i];
+    if (e.z > CORN_DIST - CORN_FADE) {
+      const fade = (CORN_DIST - e.z) / CORN_FADE;
+      if (fade <= 0.02) continue;
+      ctx.globalAlpha = fade;
+      ctx.drawImage(e.img, e.x - e.w / 2, e.y - e.h, e.w, e.h);
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.drawImage(e.img, e.x - e.w / 2, e.y - e.h, e.w, e.h);
+    }
+  }
+}
+
+const LAKE_PTS = [];
+const LAKE_SHORE = [];
+const LAKE_DEEP = [];
+for (let i = 0; i < 14; i++) {
+  const a = (i / 14) * Math.PI * 2;
+  const r = 1 + 0.055 * Math.sin(a * 3 + 1.1) + 0.012 * Math.sin(a * 5 + 2.7);
+  LAKE_PTS.push([
+    LAKE.cx + Math.cos(a) * LAKE.rx * r,
+    0,
+    LAKE.cz + Math.sin(a) * LAKE.rz * r
+  ]);
+  LAKE_SHORE.push([
+    LAKE.cx + Math.cos(a) * (LAKE.rx + 13) * r,
+    0,
+    LAKE.cz + Math.sin(a) * (LAKE.rz + 13) * r
+  ]);
+}
+for (let i = 0; i < 9; i++) {
+  const a = (i / 9) * Math.PI * 2;
+  const r = 1 + 0.07 * Math.sin(a * 3 + 2.4);
+  LAKE_DEEP.push([
+    LAKE.cx + Math.cos(a) * LAKE.rx * 0.55 * r + 12,
+    0,
+    LAKE.cz + Math.sin(a) * LAKE.rz * 0.55 * r - 18
+  ]);
+}
+
+function drawLake(c) {
+  const dist = worldDist(c, LAKE.cx, LAKE.cz);
+  if (dist > DRAW_DIST + 400) return;
+  fillWorldPoly(c, LAKE_SHORE, [186, 168, 122], dist);
+  fillWorldPoly(c, LAKE_PTS, [86, 132, 168], dist);
+  fillWorldPoly(c, LAKE_DEEP, [66, 108, 146], dist);
+  fillWorldPoly(c, [
+    [-520, 0, -392], [-344, 0, -392], [-344, 0, -382], [-520, 0, -382]
+  ], [172, 202, 222], worldDist(c, -432, -387), 0.35);
+  fillWorldPoly(c, [
+    [-476, 0, -306], [-332, 0, -306], [-332, 0, -300], [-476, 0, -300]
+  ], [172, 202, 222], worldDist(c, -404, -303), 0.3);
+}
+
 function drawSurfaces(c) {
+  drawLake(c);
   drawTracks(c);
   drawRunway(c);
   drawFields(c);
@@ -389,25 +600,24 @@ function updateLit(x, y) {
   litY = -0.75;
 }
 
+const BOX_STYLE = {
+  hangar: { wall: [143, 149, 155], roof: [166, 172, 178], accent: [51, 55, 59], door: 'x1', dw: 9, dh: 7 },
+  barn: { wall: [160, 58, 46], roof: [96, 34, 26], accent: [70, 28, 20], door: 'x0', dw: 7, dh: 7.5 },
+  shed: { wall: [134, 122, 102], roof: [98, 90, 76], accent: [80, 70, 56], door: 'x1', dw: 5, dh: 5 },
+  house: { wall: [214, 206, 190], roof: [122, 76, 58], accent: [94, 58, 46], door: 'x0', dw: 3, dh: 6, win: 1 },
+  coop: { wall: [224, 220, 208], roof: [144, 136, 122], accent: [118, 110, 98], door: 'x0', dw: 2.5, dh: 4 }
+};
+
 function drawBoxProp(c, prop) {
   const dist = worldDist(c, prop.x, prop.z);
+  const st = BOX_STYLE[prop.type] || BOX_STYLE.shed;
   const x0 = prop.x - prop.w / 2;
   const x1 = prop.x + prop.w / 2;
   const z0 = prop.z - prop.d / 2;
   const z1 = prop.z + prop.d / 2;
   const y1 = prop.h;
-  let wall;
-  let roofCol;
-  let accent;
-  if (prop.type === 'hangar') {
-    wall = [143, 149, 155];
-    roofCol = [166, 172, 178];
-    accent = [51, 55, 59];
-  } else {
-    wall = [160, 58, 46];
-    roofCol = [96, 34, 26];
-    accent = [70, 28, 20];
-  }
+  const wall = st.wall;
+  const roofCol = st.roof;
   const xf = c.px >= prop.x ? x1 : x0;
   const xk = ((xf === x0) === (SUN_DIR.x < 0)) ? 1 : 0.8;
   const zf = c.pz >= prop.z ? z1 : z0;
@@ -418,11 +628,25 @@ function drawBoxProp(c, prop) {
   if (c.py > y1) {
     fillWorldPoly(c, [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], darken(roofCol, 1.05), dist);
   }
-  if (prop.type === 'hangar' && xf === x1) {
-    fillWorldPoly(c, [[x1, 0, prop.z - 9], [x1, 0, prop.z + 9], [x1, 7, prop.z + 9], [x1, 7, prop.z - 9]], accent, dist);
+  const dw = st.dw;
+  const dh = st.dh;
+  if (st.door === 'x1' && xf === x1) {
+    fillWorldPoly(c, [[x1, 0, prop.z - dw], [x1, 0, prop.z + dw], [x1, dh, prop.z + dw], [x1, dh, prop.z - dw]], st.accent, dist);
   }
-  if (prop.type === 'barn' && xf === x0) {
-    fillWorldPoly(c, [[x0, 0, prop.z - 7], [x0, 0, prop.z + 7], [x0, 7.5, prop.z + 7], [x0, 7.5, prop.z - 7]], accent, dist);
+  if (st.door === 'x0' && xf === x0) {
+    fillWorldPoly(c, [[x0, 0, prop.z - dw], [x0, 0, prop.z + dw], [x0, dh, prop.z + dw], [x0, dh, prop.z - dw]], st.accent, dist);
+  }
+  if (st.win) {
+    const wy0 = y1 * 0.35;
+    const wy1 = Math.min(y1 - 1, wy0 + 2.4);
+    const ww = 1.3;
+    for (let k = -1; k <= 1; k += 2) {
+      const wx = prop.x + k * prop.w * 0.26;
+      fillWorldPoly(c, [
+        [wx - ww, wy0, zf], [wx + ww, wy0, zf],
+        [wx + ww, wy1, zf], [wx - ww, wy1, zf]
+      ], [86, 104, 120], dist);
+    }
   }
 }
 
@@ -519,7 +743,7 @@ function drawPropShape(c, fog, s, wpx, hpx, prop) {
     return;
   }
 
-  if ((t === 'barn' || t === 'hangar') && prop.d > 0) {
+  if (prop.d > 0) {
     drawBoxProp(c, prop);
     return;
   }
@@ -723,6 +947,17 @@ function drawMinimap() {
   const rwx = mapX(RUNWAY.cx - RUNWAY.width / 2, mx, S);
   const rwTop = mapZ(RUNWAY.z1, my, S);
   ctx.fillRect(rwx, rwTop, Math.max(2, (RUNWAY.width / (WORLD.maxX - WORLD.minX)) * S), ((RUNWAY.z1 - RUNWAY.z0) / (WORLD.maxZ - WORLD.minZ)) * S);
+
+  ctx.beginPath();
+  ctx.ellipse(
+    mapX(LAKE.cx, mx, S),
+    mapZ(LAKE.cz, my, S),
+    (LAKE.rx / (WORLD.maxX - WORLD.minX)) * S,
+    (LAKE.rz / (WORLD.maxZ - WORLD.minZ)) * S,
+    0, 0, Math.PI * 2
+  );
+  ctx.fillStyle = 'rgb(76, 124, 164)';
+  ctx.fill();
 
   const px = mapX(plane.x, mx, S);
   const pz = mapZ(plane.z, my, S);

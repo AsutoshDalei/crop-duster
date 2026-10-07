@@ -410,15 +410,37 @@ Optional items (fence posts, power-line poles): **skipped by decision.**
 4. Hay bales: directional shading + contact shadow.
 5. Optional: field-edge fence posts + wire segments, power-line poles.
 
-### Phase 4 — Airplane ⬜ Pending approval — **decision: 3D polygonal model**
+### Phase 4 — Airplane ✅ Implemented (2026-10-07) — playtest pending — **3D polygonal model**
 
-True low-poly 3D model (~60–100 faces: fuselage tube, cowl + spinner, wings
-with dihedral, tail surfaces, gear struts), rotated by real pitch (derived
-from `vs`/`speed`), roll (`bankInput`) and heading, projected through the
-existing `toCamera`/`projectCam`, faces painter-sorted and lit from `SUN_DIR`.
-Adds: translucent prop disc with blur arcs, control-surface deflection, gear
-compression on touchdown + rolling wheels, heading-aligned wing-shaped ground
-shadow, exhaust smoke particles at high throttle.
+Low-poly 3D model (161 faces, 237 verts: hex-ring fuselage with red cowl/tail,
+spinner cone, tapered wings with red tips, canopy, h-stab + elevator, fin +
+rudder, gear struts + hex-prism wheels, tailwheel, spinning blades + translucent
+prop disc), rotated by real pitch (`asin(vs/speed)`), roll (`bankInput`, zero on
+ground) and heading about a CG pivot, projected through `toCamera`/`projectCam`,
+faces painter-sorted by centroid depth, Lambert-lit from `SUN_DIR`, near-plane
+guarded. Extras: elevator/rudder deflection from `climbInput`/`bankInput`, 0.1 m
+body squat with fixed wheels on the ground (struts compress), heading-rotated
+wing-shaped ground shadow with altitude alpha, exhaust smoke particles (own
+pool) at altitude + throttle + speed.
+
+### World additions batch ✅ Implemented (2026-10-07) — playtest pending
+
+User-ordered additions on top of phases 1–4 (all render-only):
+
+1. **Many more trees**: 24 seeded groves (3–6 trees each, ~161 trees total)
+   placed by `rnd2()` with rejection sampling around the farm block, airport,
+   lake, and dirt tracks.
+2. **Lake** between runway and farm: 14-point near-convex blob
+   (`LAKE`, cx −430 / cz −350, 170 × 240) with sand shore ring, two-tone water,
+   shimmer streaks; `polyCam` scratch grown 4 → 16 slots; minimap marker.
+3. **More farm buildings**: house, shed, chicken coop, second barn — all routed
+   through `drawBoxProp` via a per-type `BOX_STYLE` (wall/roof/accent colors,
+   fixed-face door, house windows).
+4. **Brown farm soil**: `CROPS` recolored to four tilled-earth browns (consumed
+   by field tint, minimap, and wet-strip code in sync via `f.color`).
+5. **Corn rows**: two lazy-built 240×96 stalk sprites (6 stalks, leaves,
+   tassels), planted 6 m apart along 10 lines per field, depth-sorted batch,
+   distance cull/fade at 380 m; hooked in `render()` right after `drawCoverage`.
 
 ### Phase 5 — Particles & screen FX ⬜ Pending approval
 
@@ -436,5 +458,6 @@ shadow, exhaust smoke particles at high throttle.
 | 1 — Sky & atmosphere | ✅ Implemented (2026-10-07) — playtest pending |
 | 2 — Ground & fields | ✅ Implemented (2026-10-07) — playtest pending |
 | 3 — Props | ✅ Implemented (2026-10-07) — playtest pending |
-| 4 — Airplane (3D model chosen) | ⬜ Awaiting approval |
+| World additions batch (trees/lake/buildings/soil/corn) | ✅ Implemented (2026-10-07) — playtest pending |
+| 4 — Airplane (3D model) | ✅ Implemented (2026-10-07) — playtest pending |
 | 5 — Particles & screen FX | ⬜ Awaiting approval |

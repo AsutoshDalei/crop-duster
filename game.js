@@ -112,6 +112,8 @@ let cloudFlash = 0;
 let stallWarn = false;
 let rollingDustAcc = 0;
 const dust = [];
+const exhaust = [];
+let exhaustAcc = 0;
 const sunScreen = { front: false, x: 0, y: 0 };
 let cloudBankCv = null;
 
@@ -133,6 +135,9 @@ function resetFlight() {
   climbInput = 0;
   rudder = 0;
   stallWarn = false;
+  exhaust.length = 0;
+  exhaustAcc = 0;
+  propAngle = 0;
   cam.x = plane.x - Math.sin(plane.heading) * CAM_BACK;
   cam.y = plane.y + CAM_HEIGHT;
   cam.z = plane.z - Math.cos(plane.heading) * CAM_BACK;
@@ -236,7 +241,18 @@ function update(dt) {
 
   const rumble = plane.y === 0 && plane.speed > 4 ? Math.min(0.35, plane.speed / 120) : 0;
   shake = Math.max(rumble, shake - dt * 2);
+  propAngle += dt * (4 + plane.throttle * 46);
+  if (plane.y > 3 && plane.throttle > 0.5 && plane.speed > 8) {
+    exhaustAcc += dt * 22;
+    while (exhaustAcc >= 1) {
+      exhaustAcc -= 1;
+      spawnExhaust();
+    }
+  } else {
+    exhaustAcc = 0;
+  }
   updateDust(dt);
+  updateExhaust(dt);
   updateCloudFlash();
   updateSpray(dt);
 
@@ -301,10 +317,10 @@ function projectCam(p) {
   };
 }
 
-const polyCam = [
-  { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 },
-  { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }
-];
+const polyCam = [];
+for (let i = 0; i < 16; i++) {
+  polyCam.push({ x: 0, y: 0, z: 0 });
+}
 const polyClip = [];
 const polyScreen = [];
 for (let i = 0; i < 16; i++) {
@@ -616,6 +632,34 @@ function updateCloudFlash() {
   cloudFlash = Math.max(hit, cloudFlash - 0.03);
 }
 
+function spawnExhaust() {
+  if (exhaust.length >= 60) return;
+  const bx = plane.x - Math.sin(plane.heading) * 5.5;
+  const bz = plane.z - Math.cos(plane.heading) * 5.5;
+  exhaust.push({
+    x: bx + (Math.random() - 0.5) * 1.2,
+    y: plane.y + 0.5 + (Math.random() - 0.5) * 0.8,
+    z: bz + (Math.random() - 0.5) * 1.2,
+    vx: (Math.random() - 0.5) * 1.5,
+    vy: (Math.random() - 0.3) * 0.8,
+    vz: (Math.random() - 0.5) * 1.5,
+    life: 1,
+    r: 1.4 + Math.random() * 1.2
+  });
+}
+
+function updateExhaust(dt) {
+  for (let i = exhaust.length - 1; i >= 0; i--) {
+    const p = exhaust[i];
+    p.x += (p.vx + WIND.x * 0.6) * dt;
+    p.y += p.vy * dt;
+    p.z += (p.vz + WIND.z * 0.6) * dt;
+    p.life -= dt * 0.8;
+    p.r += dt * 3;
+    if (p.life <= 0) exhaust.splice(i, 1);
+  }
+}
+
 function drawDust(c) {
   for (let i = 0; i < dust.length; i++) {
     const p = dust[i];
@@ -632,96 +676,395 @@ function drawDust(c) {
   }
 }
 
+function drawExhaust(c) {
+  for (let i = 0; i < exhaust.length; i++) {
+    const p = exhaust[i];
+    const q = toCamera(c, p.x, p.y, p.z);
+    if (q.z < NEAR) continue;
+    const s = projectCam(q);
+    if (s.x < -30 || s.x > viewW + 30 || s.y < -30 || s.y > viewH + 30) continue;
+    const r = (focal * p.r) / q.z;
+    if (r < 0.5) continue;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(126, 126, 130, ' + Math.max(0, p.life * 0.3) + ')';
+    ctx.fill();
+  }
+}
+
 function drawShadow(c) {
   const p = toCamera(c, plane.x, 0.1, plane.z);
   if (p.z < NEAR) return;
   const s = projectCam(p);
-  if (s.x < -100 || s.x > viewW + 100 || s.y < -100 || s.y > viewH + 100) return;
+  const f = toCamera(c, plane.x + Math.sin(plane.heading) * 12, 0.1, plane.z + Math.cos(plane.heading) * 12);
+  if (f.z < NEAR) return;
+  const sf = projectCam(f);
+  if (s.x < -250 || s.x > viewW + 250 || s.y < -250 || s.y > viewH + 250) return;
 
-  const radius = (focal * 5.5) / p.z;
-  const alpha = Math.max(0.12, Math.min(0.5, 0.5 - plane.y / 240));
+  const scale = (focal * 6.4) / p.z;
+  const alpha = Math.max(0.1, Math.min(0.5, 0.5 - plane.y / 240));
+  const pts = [
+    [2.6, 0], [-0.4, 6.2], [-1.6, 1.2],
+    [-2.6, 0], [-1.6, -1.2], [-0.4, -6.2]
+  ];
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  ctx.rotate(Math.atan2(sf.y - s.y, sf.x - s.x));
   ctx.beginPath();
-  ctx.ellipse(s.x, s.y, radius, radius * 0.45, 0, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(20, 35, 12, ' + alpha + ')';
+  for (let i = 0; i < pts.length; i++) {
+    const x = pts[i][0] * scale;
+    const y = pts[i][1] * scale;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(20, 34, 12, ' + alpha + ')';
   ctx.fill();
+  ctx.restore();
+}
+
+const PLANE_MODEL = { v: [], f: [] };
+const PIVOT = { y: 1.25, z: 0.3 };
+const PY = [240, 192, 56];
+const PR = [200, 64, 44];
+const PRD = [172, 54, 38];
+const PST = [78, 78, 84];
+const PGL = [54, 74, 96];
+const PWH = [34, 34, 38];
+
+function pmv(x, y, z, g, de, dr, s) {
+  PLANE_MODEL.v.push([x, y, z, g || 0, de || 0, dr || 0, s || 0]);
+  return PLANE_MODEL.v.length - 1;
+}
+
+function pmNormal(idxs, ref) {
+  let nx = 0;
+  let ny = 0;
+  let nz = 0;
+  const n = idxs.length;
+  for (let i = 0; i < n; i++) {
+    const a = PLANE_MODEL.v[idxs[i]];
+    const b = PLANE_MODEL.v[idxs[(i + 1) % n]];
+    nx += (a[1] - b[1]) * (a[2] + b[2]);
+    ny += (a[2] - b[2]) * (a[0] + b[0]);
+    nz += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  if (len < 1e-9) return [0, 1, 0];
+  nx /= len;
+  ny /= len;
+  nz /= len;
+  let cx = 0;
+  let cy = 0;
+  let cz = 0;
+  for (let i = 0; i < n; i++) {
+    const a = PLANE_MODEL.v[idxs[i]];
+    cx += a[0];
+    cy += a[1];
+    cz += a[2];
+  }
+  cx = cx / n - ref[0];
+  cy = cy / n - ref[1];
+  cz = cz / n - ref[2];
+  if (cx * nx + cy * ny + cz * nz < 0) {
+    nx = -nx;
+    ny = -ny;
+    nz = -nz;
+  }
+  return [nx, ny, nz];
+}
+
+function pmf(idxs, col, ref, alpha, spin) {
+  PLANE_MODEL.f.push({
+    i: idxs,
+    c: col,
+    n: pmNormal(idxs, ref),
+    a: alpha === undefined ? 1 : alpha,
+    s: spin || 0
+  });
+}
+
+function pextrude(axis, poly, a0, a1, col, opts) {
+  const g = opts && opts.g ? 1 : 0;
+  const defl = opts ? opts.defl : '';
+  const alpha = opts ? opts.alpha : undefined;
+  const spin = opts && opts.spin ? 1 : 0;
+  let sumU = 0;
+  let sumV = 0;
+  for (let i = 0; i < poly.length; i++) {
+    sumU += poly[i][0];
+    sumV += poly[i][1];
+  }
+  const cu = sumU / poly.length;
+  const cv = sumV / poly.length;
+  const am = (a0 + a1) / 2;
+  const ref = axis === 'y' ? [cu, am, cv]
+    : axis === 'x' ? [am, cu, cv]
+      : [cu, cv, am];
+  const lo = [];
+  const hi = [];
+  for (let i = 0; i < poly.length; i++) {
+    const u = poly[i][0];
+    const v = poly[i][1];
+    for (let e = 0; e < 2; e++) {
+      const a = e ? a1 : a0;
+      let x;
+      let y;
+      let z;
+      if (axis === 'y') { x = u; y = a; z = v; }
+      else if (axis === 'x') { x = a; y = u; z = v; }
+      else { x = u; y = v; z = a; }
+      const d = defl ? -3.6 - z : 0;
+      const idx = pmv(x, y, z, g, defl === 'e' ? d : 0, defl === 'r' ? d : 0, spin);
+      if (e) hi.push(idx);
+      else lo.push(idx);
+    }
+  }
+  pmf(hi.slice(), col, ref, alpha, spin);
+  pmf(lo.slice(), col, ref, alpha, spin);
+  for (let i = 0; i < poly.length; i++) {
+    const j = (i + 1) % poly.length;
+    pmf([lo[i], lo[j], hi[j], hi[i]], col, ref, alpha, spin);
+  }
+}
+
+function buildPlaneModel() {
+  const rings = [
+    [3.4, 0.6], [2.6, 0.68], [0.6, 0.72],
+    [-1.4, 0.62], [-3.0, 0.42], [-4.1, 0.22]
+  ];
+  const segCols = [PR, PY, PY, PY, PR];
+  for (let k = 0; k < rings.length - 1; k++) {
+    const poly = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+      poly.push([rings[k][1] * Math.cos(a), 1.75 + rings[k][1] * Math.sin(a)]);
+    }
+    pextrude('z', poly, rings[k][0], rings[k + 1][0], segCols[k]);
+  }
+
+  const spinBase = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+    spinBase.push(pmv(0.3 * Math.cos(a), 1.75 + 0.3 * Math.sin(a), 3.4, 1, 0, 0, 0));
+  }
+  const apex = pmv(0, 1.75, 4.05, 1, 0, 0, 0);
+  for (let i = 0; i < 6; i++) {
+    pmf([spinBase[i], spinBase[(i + 1) % 6], apex], PR, [0, 1.75, 3.0]);
+  }
+
+  pextrude('y', [[0.45, 1.05], [4.7, 0.85], [4.7, -0.55], [0.45, -0.75]],
+    1.12, 1.42, PY);
+  pextrude('y', [[4.7, 0.85], [6.1, 0.75], [6.1, -0.45], [4.7, -0.55]],
+    1.12, 1.42, PR);
+  pextrude('y', [[-0.45, 1.05], [-4.7, 0.85], [-4.7, -0.55], [-0.45, -0.75]],
+    1.12, 1.42, PY);
+  pextrude('y', [[-4.7, 0.85], [-6.1, 0.75], [-6.1, -0.45], [-4.7, -0.55]],
+    1.12, 1.42, PR);
+
+  pextrude('y', [[-0.36, 0.95], [0.36, 0.95], [0.36, -0.35], [-0.36, -0.35]],
+    2.3, 2.74, PGL);
+
+  pextrude('y', [[0.15, -2.9], [2.1, -3.05], [2.1, -3.6], [0.15, -3.6]],
+    1.78, 1.94, PR);
+  pextrude('y', [[-0.15, -2.9], [-2.1, -3.05], [-2.1, -3.6], [-0.15, -3.6]],
+    1.78, 1.94, PR);
+  pextrude('y', [[0.15, -3.6], [2.1, -3.6], [2.1, -4.1], [0.15, -4.1]],
+    1.8, 1.93, PRD, { defl: 'e' });
+  pextrude('y', [[-0.15, -3.6], [-2.1, -3.6], [-2.1, -4.1], [-0.15, -4.1]],
+    1.8, 1.93, PRD, { defl: 'e' });
+
+  pextrude('x', [[1.9, -2.5], [1.9, -3.6], [3.25, -3.6], [3.25, -3.0]],
+    -0.07, 0.07, PR);
+  pextrude('x', [[1.95, -3.6], [1.95, -4.05], [3.1, -4.05], [3.25, -3.6]],
+    -0.05, 0.05, PRD, { defl: 'r' });
+
+  for (let s = -1; s <= 1; s += 2) {
+    const tx = 0.4 * s;
+    const ty = 1.15;
+    const bx = 1.72 * s;
+    const by = 0.42;
+    const dx = bx - tx;
+    const dy = by - ty;
+    const pl = Math.sqrt(dx * dx + dy * dy);
+    const nx = (-dy / pl) * 0.07;
+    const ny = (dx / pl) * 0.07;
+    const v0 = pmv(tx + nx, ty + ny, 1.0, 1, 0, 0, 0);
+    const v1 = pmv(bx + nx, by + ny, 1.0, 0, 0, 0, 0);
+    const v2 = pmv(bx - nx, by - ny, 1.0, 0, 0, 0, 0);
+    const v3 = pmv(tx - nx, ty - ny, 1.0, 1, 0, 0, 0);
+    const w0 = pmv(tx + nx, ty + ny, 1.3, 1, 0, 0, 0);
+    const w1 = pmv(bx + nx, by + ny, 1.3, 0, 0, 0, 0);
+    const w2 = pmv(bx - nx, by - ny, 1.3, 0, 0, 0, 0);
+    const w3 = pmv(tx - nx, ty - ny, 1.3, 1, 0, 0, 0);
+    const ref = [(tx + bx) / 2, (ty + by) / 2, 1.15];
+    pmf([w0, w1, w2, w3], PST, ref);
+    pmf([v3, v2, v1, v0], PST, ref);
+    pmf([v0, v1, w1, w0], PST, ref);
+    pmf([v1, v2, w2, w1], PST, ref);
+    pmf([v2, v3, w3, w2], PST, ref);
+    pmf([v3, v0, w0, w3], PST, ref);
+  }
+
+  const wheelPoly = function (wyc, wzc, wr) {
+    const pts = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      pts.push([wyc + wr * Math.cos(a), wzc + wr * Math.sin(a)]);
+    }
+    return pts;
+  };
+  pextrude('x', wheelPoly(0.42, 1.15, 0.42), 1.6, 1.96, PWH);
+  pextrude('x', wheelPoly(0.42, 1.15, 0.42), -1.96, -1.6, PWH);
+  pextrude('x', wheelPoly(0.17, -3.85, 0.17), -0.08, 0.08, PWH);
+
+  pextrude('z', [[-0.15, 2.05], [0.15, 2.05], [0.1, 3.31], [-0.1, 3.31]],
+    3.82, 3.88, [48, 46, 44], { g: 1, spin: 1 });
+  pextrude('z', [[-0.15, 1.45], [0.15, 1.45], [0.1, 0.19], [-0.1, 0.19]],
+    3.82, 3.88, [48, 46, 44], { g: 1, spin: 1 });
+
+  const discIdx = [];
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    discIdx.push(pmv(1.57 * Math.cos(a), 1.75 + 1.57 * Math.sin(a), 3.85, 1, 0, 0, 0));
+  }
+  pmf(discIdx, [236, 240, 246], [0, 1.75, 3.0], 0.16, 0);
+}
+
+buildPlaneModel();
+
+const planeVS = new Float64Array(PLANE_MODEL.v.length * 5);
+const planeCent = new Float64Array(PLANE_MODEL.f.length);
+const planeOrder = [];
+for (let i = 0; i < PLANE_MODEL.f.length; i++) planeOrder.push(i);
+const planeM = new Float64Array(9);
+const matT = new Float64Array(9);
+let propAngle = 0;
+
+function updatePlaneMatrix() {
+  let pitch = 0;
+  if (plane.speed > 2) {
+    let p = plane.vs / plane.speed;
+    if (p > 1) p = 1;
+    if (p < -1) p = -1;
+    pitch = Math.asin(p);
+  }
+  const roll = plane.y < 0.05 ? 0 : -bankInput * 0.75;
+  const cr = Math.cos(roll);
+  const sr = Math.sin(roll);
+  const cp = Math.cos(pitch);
+  const sp = Math.sin(pitch);
+  const cy = Math.cos(plane.heading);
+  const sy = Math.sin(plane.heading);
+  matT[0] = cr; matT[1] = -sr; matT[2] = 0;
+  matT[3] = cp * sr; matT[4] = cp * cr; matT[5] = sp;
+  matT[6] = -sp * sr; matT[7] = -sp * cr; matT[8] = cp;
+  planeM[0] = cy * matT[0] + sy * matT[6];
+  planeM[1] = cy * matT[1] + sy * matT[7];
+  planeM[2] = cy * matT[2] + sy * matT[8];
+  planeM[3] = matT[3];
+  planeM[4] = matT[4];
+  planeM[5] = matT[5];
+  planeM[6] = -sy * matT[0] + cy * matT[6];
+  planeM[7] = -sy * matT[1] + cy * matT[7];
+  planeM[8] = -sy * matT[2] + cy * matT[8];
 }
 
 function drawPlaneShape(c) {
-  const p = toCamera(c, plane.x, plane.y, plane.z);
-  if (p.z < NEAR) return;
-  const s = projectCam(p);
-  const half = (focal * 5.5) / p.z;
-  if (half < 4) return;
+  updatePlaneMatrix();
+  const V = PLANE_MODEL.v;
+  const F = PLANE_MODEL.f;
+  const S = planeVS;
+  const M = planeM;
+  const comp = plane.y < 0.05 ? 0.1 : 0;
+  const elev = climbInput * 0.3;
+  const rud = bankInput * 0.3;
+  const ca = Math.cos(propAngle);
+  const sa = Math.sin(propAngle);
 
-  ctx.save();
-  ctx.translate(s.x, s.y);
-  ctx.translate(0, climbInput * 4);
-  ctx.rotate(bankInput * 0.45);
-  ctx.scale(half, half);
-  ctx.lineJoin = 'round';
+  for (let i = 0; i < V.length; i++) {
+    const v = V[i];
+    let x = v[0];
+    let y = v[1];
+    let z = v[2];
+    if (v[6]) {
+      const dx = x;
+      const dy = y - 1.75;
+      x = dx * ca - dy * sa;
+      y = 1.75 + dx * sa + dy * ca;
+    }
+    y += elev * v[4];
+    x += rud * v[5];
+    if (v[3] && comp > 0) y -= comp;
+    y -= PIVOT.y;
+    z -= PIVOT.z;
+    const rx = M[0] * x + M[1] * y + M[2] * z;
+    const ry = M[3] * x + M[4] * y + M[5] * z;
+    const rz = M[6] * x + M[7] * y + M[8] * z;
+    const ddx = rx + plane.x - c.px;
+    const ddy = ry + PIVOT.y + plane.y - c.py;
+    const ddz = rz + PIVOT.z + plane.z - c.pz;
+    const cx = ddx * c.rx + ddy * c.ry + ddz * c.rz;
+    const cy = ddx * c.ux + ddy * c.uy + ddz * c.uz;
+    let cz = ddx * c.fx + ddy * c.fy + ddz * c.fz;
+    if (cz < 0.05) cz = 0.05;
+    const o = i * 5;
+    S[o] = cx;
+    S[o + 1] = cy;
+    S[o + 2] = cz;
+    S[o + 3] = viewW / 2 + (focal * cx) / cz;
+    S[o + 4] = viewH / 2 - (focal * cy) / cz;
+  }
 
-  ctx.fillStyle = 'rgba(255, 255, 255, ' + (0.05 + plane.throttle * 0.28) + ')';
-  ctx.beginPath();
-  ctx.ellipse(0, -0.04, 0.26, 0.26, 0, 0, Math.PI * 2);
-  ctx.fill();
+  for (let f = 0; f < F.length; f++) {
+    const face = F[f];
+    let sum = 0;
+    let ok = true;
+    for (let j = 0; j < face.i.length; j++) {
+      const cz = S[face.i[j] * 5 + 2];
+      if (cz < NEAR) ok = false;
+      sum += cz;
+    }
+    planeCent[f] = ok ? sum / face.i.length : 1e9;
+  }
+  planeOrder.sort(function (a, b) { return planeCent[b] - planeCent[a]; });
 
-  ctx.fillStyle = '#f0c038';
-  ctx.beginPath();
-  ctx.ellipse(0, -0.02, 0.16, 0.3, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(40, 30, 5, 0.55)';
-  ctx.lineWidth = 0.02;
-  ctx.stroke();
-
-  ctx.fillStyle = '#c8402c';
-  ctx.fillRect(-0.12, 0.08, 0.24, 0.045);
-
-  ctx.fillStyle = '#f0c038';
-  ctx.fillRect(-1, 0.05, 2, 0.11);
-  ctx.fillStyle = '#c8402c';
-  ctx.fillRect(-1, 0.14, 2, 0.02);
-  ctx.fillStyle = '#2b2b2b';
-  ctx.fillRect(-1, 0.05, 0.1, 0.11);
-  ctx.fillRect(0.9, 0.05, 0.1, 0.11);
-  ctx.strokeStyle = 'rgba(40, 30, 5, 0.55)';
-  ctx.strokeRect(-1, 0.05, 2, 0.11);
-
-  ctx.fillStyle = '#d9a926';
-  ctx.fillRect(-0.78, 0.05 + bankInput * 0.035, 0.3, 0.05);
-  ctx.fillRect(0.48, 0.05 - bankInput * 0.035, 0.3, 0.05);
-
-  ctx.strokeStyle = '#555555';
-  ctx.lineWidth = 0.03;
-  ctx.beginPath();
-  ctx.moveTo(-0.12, 0.16);
-  ctx.lineTo(-0.3, 0.33);
-  ctx.moveTo(0.12, 0.16);
-  ctx.lineTo(0.3, 0.33);
-  ctx.stroke();
-  ctx.fillStyle = '#222222';
-  ctx.beginPath();
-  ctx.ellipse(-0.3, 0.36, 0.05, 0.065, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(0.3, 0.36, 0.05, 0.065, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#e2b02e';
-  ctx.fillRect(-0.42, -0.4 - climbInput * 0.03, 0.84, 0.07);
-  ctx.strokeStyle = 'rgba(40, 30, 5, 0.55)';
-  ctx.lineWidth = 0.02;
-  ctx.strokeRect(-0.42, -0.4 - climbInput * 0.03, 0.84, 0.07);
-
-  ctx.fillStyle = '#f0c038';
-  ctx.fillRect(-0.05, -0.72, 0.1, 0.36);
-  ctx.fillStyle = '#c8402c';
-  ctx.fillRect(-0.05, -0.72, 0.1, 0.07);
-  ctx.fillStyle = '#d9a926';
-  ctx.fillRect(-0.05 + bankInput * 0.035, -0.65, 0.1, 0.29);
-  ctx.strokeStyle = 'rgba(40, 30, 5, 0.55)';
-  ctx.strokeRect(-0.05, -0.72, 0.1, 0.36);
-
-  ctx.restore();
+  for (let oi = 0; oi < planeOrder.length; oi++) {
+    const f = planeOrder[oi];
+    if (planeCent[f] >= 1e9) continue;
+    const face = F[f];
+    let nx = face.n[0];
+    let ny = face.n[1];
+    let nz = face.n[2];
+    if (face.s) {
+      const t = nx * ca - ny * sa;
+      ny = nx * sa + ny * ca;
+      nx = t;
+    }
+    const mx = M[0] * nx + M[1] * ny + M[2] * nz;
+    const my = M[3] * nx + M[4] * ny + M[5] * nz;
+    const mz = M[6] * nx + M[7] * ny + M[8] * nz;
+    let lam = mx * SUN_DIR.x + my * SUN_DIR.y + mz * SUN_DIR.z;
+    if (lam < 0) lam = 0;
+    const k = 0.5 + 0.5 * lam;
+    const col = 'rgb(' +
+      Math.min(255, Math.round(face.c[0] * k)) + ',' +
+      Math.min(255, Math.round(face.c[1] * k)) + ',' +
+      Math.min(255, Math.round(face.c[2] * k)) + ')';
+    ctx.beginPath();
+    ctx.moveTo(S[face.i[0] * 5 + 3], S[face.i[0] * 5 + 4]);
+    for (let j = 1; j < face.i.length; j++) {
+      ctx.lineTo(S[face.i[j] * 5 + 3], S[face.i[j] * 5 + 4]);
+    }
+    ctx.closePath();
+    if (face.a < 1) ctx.globalAlpha = face.a;
+    ctx.fillStyle = col;
+    ctx.fill();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if (face.a < 1) ctx.globalAlpha = 1;
+  }
 }
 
 function drawText(text, x, y, size, color, align) {
@@ -925,9 +1268,11 @@ function render() {
   drawTerrain(c);
   drawSurfaces(c);
   drawCoverage(c);
+  drawCorn(c);
   drawProps(c);
   drawParticles(c);
   drawDust(c);
+  drawExhaust(c);
   drawShadow(c);
   drawPlaneShape(c);
 
