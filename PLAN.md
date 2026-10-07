@@ -103,6 +103,17 @@ with correct perspective — the technical foundation.
   horizon, no clipping glitches, 60fps; verified with edge cases (flying nearly
   into ground, looking sideways at quads near the camera).
 
+**Implementation notes (post Stage 1):**
+- The player's plane is rendered by **projecting its actual 3D position** (not a
+  fixed screen overlay) — it drifts naturally in frame when the camera lags.
+- Ground quads are coplanar and non-overlapping, so they need no sort; the
+  **generic depth-sorted renderable list** (for billboards, particles, props) is
+  deferred to Stage 2 where it first becomes necessary.
+- Camera pitch is fixed (horizon stays level); camera roll for bank-tilt is a
+  Stage 5 polish item that extends `makeCam()`.
+- The flight model is intentionally "basic" per plan; realism upgrades are
+  tracked in the Backlog (§9).
+
 ### Stage 2 — World Building
 **Goal:** A concrete world: airport where you start, large farm to fly to, depth cues.
 
@@ -263,12 +274,26 @@ HTTP 500) even while its status page reports all systems operational. Policy:
 
 ---
 
-## 9. Status
+## 9. Backlog (user-requested enhancements)
+
+Requested during Stage 1 review; not yet scheduled into stage exit criteria.
+
+| Item | Description | Proposed stage |
+|---|---|---|
+| Plane visual realism | Replace flat rect/ellipse overlay with a detailed rear-view silhouette (crop-duster profile: braced wings, tailwheel stance, exhaust, stripe livery), plus prop-blur disc and control-surface movement on bank/climb | Stage 5 (visual polish) |
+| Physics realism — speed coupling | Climb costs airspeed (energy trade), dive gains it; throttle-dependent acceleration curve instead of linear ease | Stage 5, or earlier if Stage 4 crash logic needs it |
+| Physics realism — banked turns | A/D rolls the plane first, turn rate follows bank angle (roll→turn coupling) instead of direct heading rate | Stage 5 |
+| Physics realism — stall | Below a minimum speed: reduced control authority, nose-drop tendency, warning cue before stall | Stage 5 |
+| Physics realism — wind | Steady wind vector drifting the plane and the spray particles (ties into Stage 3 wind-drift and windsock prop) | Stage 3–5 |
+
+---
+
+## 10. Status
 
 | Stage | Status |
 |---|---|
 | 0 — Scaffold & deploy wiring | ✅ Done (2026-10-07) — live at https://asutoshdalei.github.io/crop-duster/ |
-| 1 — Pseudo-3D engine core | ⬜ Not started |
+| 1 — Pseudo-3D engine core | ✅ Done (2026-10-07) — playtest passed |
 | 2 — World building | ⬜ Not started |
 | 3 — Crop-dusting mechanics | ⬜ Not started |
 | 4 — Game flow & HUD | ⬜ Not started |
