@@ -137,6 +137,18 @@ with correct perspective — the technical foundation.
 - **Exit criteria:** take off from runway, navigate by minimap to the farm, fly
   low over distinguishable fields; world reads clearly at speed.
 
+**Implementation notes (post Stage 2):**
+- `world.js` added (loads before `game.js` via plain `<script>` tag — shared
+  script scope, still no build step). It owns: bounds, `START`, `RUNWAY`,
+  `fields[]` (with `coverage` already wired to renderer + minimap), `PROPS[]`
+  (seeded LCG — stable layout), terrain/surface/prop/minimap drawing.
+- World is flat, so ground surfaces draw after terrain with no sorting; only
+  props are depth-sorted (far → near) — the painter's list arrived here as planned.
+- Fences omitted (billboards can't represent long world-aligned lines well);
+  hay bales cover the "farm clutter" role. Optional later.
+- Plane is clamped at map bounds; border tree belt visually marks the edge.
+- Refill zone (`RUNWAY`) is available for Stage 3's refill detection.
+
 ### Stage 3 — Crop-Dusting Mechanics
 **Goal:** The core loop — spray, cover fields, manage fertilizer.
 
@@ -294,7 +306,7 @@ Requested during Stage 1 review; not yet scheduled into stage exit criteria.
 |---|---|
 | 0 — Scaffold & deploy wiring | ✅ Done (2026-10-07) — live at https://asutoshdalei.github.io/crop-duster/ |
 | 1 — Pseudo-3D engine core | ✅ Done (2026-10-07) — playtest passed |
-| 2 — World building | ⬜ Not started |
+| 2 — World building | ✅ Done (2026-10-07) — playtest passed |
 | 3 — Crop-dusting mechanics | ⬜ Not started |
 | 4 — Game flow & HUD | ⬜ Not started |
 | 5 — Polish | ⬜ Not started |
