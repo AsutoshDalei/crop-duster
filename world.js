@@ -313,13 +313,22 @@ function drawMinimap() {
   for (let i = 0; i < fields.length; i++) {
     const f = fields[i];
     const tint = lerpColor(f.color, LUSH_COLOR, f.coverage * 0.85);
+    const fx = mapX(f.x0, mx, S);
+    const fz = mapZ(f.z1, my, S);
+    const fw = ((f.x1 - f.x0) / (WORLD.maxX - WORLD.minX)) * S;
+    const fh = ((f.z1 - f.z0) / (WORLD.maxZ - WORLD.minZ)) * S;
     ctx.fillStyle = rgb(tint);
-    ctx.fillRect(
-      mapX(f.x0, mx, S),
-      mapZ(f.z1, my, S),
-      ((f.x1 - f.x0) / (WORLD.maxX - WORLD.minX)) * S,
-      ((f.z1 - f.z0) / (WORLD.maxZ - WORLD.minZ)) * S
-    );
+    ctx.fillRect(fx, fz, fw, fh);
+    if (f.contract) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(fx + 0.5, fz + 0.5, fw - 1, fh - 1);
+      ctx.font = '10px ' + FONT_STACK;
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(f.contractIndex), fx + fw / 2, fz + fh / 2);
+    }
   }
 
   ctx.fillStyle = '#b9b9bd';

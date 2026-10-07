@@ -23,6 +23,12 @@ const CLIMB_RATE = 9;
 const CLIMB_EASE = 1.8;
 const BANK_EASE = 5;
 
+const CONTRACT_FIELDS = [1, 6, 9, 14];
+const CONTRACT_TARGET = 0.8;
+const CRASH_SPEED = 15;
+const CRASH_VS = -4;
+const BEST_KEY = 'cropDusterBest';
+
 const SKY_TOP = [63, 151, 214];
 const SKY_HORIZON = [203, 232, 250];
 const GROUND_A = [111, 158, 70];
@@ -58,6 +64,19 @@ const CONTROL_KEYS = new Set([
 
 let state = 'TITLE';
 let playTime = 0;
+let failReason = '';
+let finalScore = 0;
+let crashThisFrame = false;
+
+function loadBest() {
+  try {
+    return parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+let bestScore = loadBest();
 
 const plane = {
   x: 0,
@@ -108,8 +127,11 @@ function setState(next) {
   document.body.classList.toggle('playing', state === 'PLAYING');
   if (state === 'PLAYING') {
     playTime = 0;
+    failReason = '';
+    crashThisFrame = false;
     resetFlight();
     resetSpray();
+    resetContract();
   }
 }
 
@@ -118,7 +140,8 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   keys.add(e.code);
   if (e.code === 'Enter' && state === 'TITLE') setState('PLAYING');
-  if (e.code === 'Escape' && state === 'PLAYING') setState('TITLE');
+  if (e.code === 'Escape' && state !== 'TITLE') setState('TITLE');
+  if (e.code === 'KeyR' && (state === 'COMPLETE' || state === 'FAILED')) setState('PLAYING');
 });
 
 window.addEventListener('keyup', (e) => {
@@ -150,11 +173,15 @@ function update(dt) {
 
   plane.x += Math.sin(plane.heading) * plane.speed * dt;
   plane.z += Math.cos(plane.heading) * plane.speed * dt;
+  const prevY = plane.y;
+  const prevVs = plane.vs;
   plane.y += plane.vs * dt;
   if (plane.y < 0) {
     plane.y = 0;
     if (plane.vs < 0) plane.vs = 0;
   }
+  crashThisFrame = prevY > 0 && plane.y === 0 &&
+    (plane.speed > CRASH_SPEED || prevVs < CRASH_VS);
   if (plane.x < WORLD.minX + 40) plane.x = WORLD.minX + 40;
   if (plane.x > WORLD.maxX - 40) plane.x = WORLD.maxX - 40;
   if (plane.z < WORLD.minZ + 40) plane.z = WORLD.minZ + 40;
@@ -170,6 +197,18 @@ function update(dt) {
   cam.yaw = wrapAngle(cam.yaw + wrapAngle(plane.heading - cam.yaw) * k);
 
   updateSpray(dt);
+
+  if (contractDone()) {
+    startEnd('COMPLETE', '');
+    return;
+  }
+  if (crashThisFrame) {
+    startEnd('FAILED', 'Crash — you hit the ground too hard');
+    return;
+  }
+  if (tank.current <= 0 && refillsLeft <= 0) {
+    startEnd('FAILED', 'Out of fertilizer — contract incomplete');
+  }
 }
 
 function makeCam() {
@@ -393,7 +432,9 @@ function drawTitle() {
   drawText('Press Enter to start', viewW / 2, viewH * 0.47, 26, '#f4f7ef');
   drawText('W / S  altitude     A / D  lateral', viewW / 2, viewH * 0.58, 20, '#e8f1dd');
   drawText('↑ / ↓  throttle     Space  spray', viewW / 2, viewH * 0.63, 20, '#e8f1dd');
-  drawText('Stage 2 — world preview', viewW / 2, viewH * 0.9, 15, 'rgba(255, 255, 255, 0.7)');
+  if (bestScore > 0) {
+    drawText('Best score  ' + bestScore, viewW / 2, viewH * 0.9, 15, 'rgba(255, 224, 138, 0.85)');
+  }
 }
 
 function formatTime(seconds) {
@@ -433,6 +474,122 @@ function drawDebug() {
   ctx.fillText('Esc — back to title', viewW / 2, viewH - 14);
 }
 
+function resetContract() {
+  for (let i = 0; i < fields.length; i++) {
+    fields[i].contract = false;
+    fields[i].contractIndex = 0;
+    fields[i].target = CONTRACT_TARGET;
+  }
+  for (let i = 0; i < CONTRACT_FIELDS.length; i++) {
+    const f = fields[CONTRACT_FIELDS[i]];
+    f.contract = true;
+    f.contractIndex = i + 1;
+  }
+}
+
+function contractDone() {
+  for (let i = 0; i < CONTRACT_FIELDS.length; i++) {
+    const f = fields[CONTRACT_FIELDS[i]];
+    if (f.coverage < f.target) return false;
+  }
+  return true;
+}
+
+function contractDoneCount() {
+  let n = 0;
+  for (let i = 0; i < CONTRACT_FIELDS.length; i++) {
+    const f = fields[CONTRACT_FIELDS[i]];
+    if (f.coverage >= f.target) n++;
+  }
+  return n;
+}
+
+function scoreParts() {
+  let sum = 0;
+  for (let i = 0; i < CONTRACT_FIELDS.length; i++) {
+    const f = fields[CONTRACT_FIELDS[i]];
+    sum += Math.min(1, f.coverage / f.target);
+  }
+  const coverage = (sum / CONTRACT_FIELDS.length) * 600;
+  const effRatio = sprayStats.released > 0 ? sprayStats.deposited / sprayStats.released : 0;
+  const efficiency = effRatio * 200;
+  const time = Math.max(0, 200 - playTime / 2);
+  return {
+    coverage: Math.round(coverage),
+    efficiency: Math.round(efficiency),
+    time: Math.round(time),
+    total: Math.round(coverage + efficiency + time)
+  };
+}
+
+function startEnd(kind, reason) {
+  failReason = reason;
+  const parts = scoreParts();
+  finalScore = parts.total;
+  if (kind === 'COMPLETE' && finalScore > bestScore) {
+    bestScore = finalScore;
+    try {
+      localStorage.setItem(BEST_KEY, String(bestScore));
+    } catch (e) {}
+  }
+  setState(kind);
+}
+
+function drawContractPanel() {
+  const x = 14;
+  drawText(
+    'CONTRACT  ' + contractDoneCount() + '/' + CONTRACT_FIELDS.length + ' complete',
+    x, 20, 16, '#ffffff', 'left'
+  );
+  for (let i = 0; i < CONTRACT_FIELDS.length; i++) {
+    const f = fields[CONTRACT_FIELDS[i]];
+    const pct = Math.round(f.coverage * 100);
+    const ok = f.coverage >= f.target;
+    const label = 'F' + (i + 1) + '  ' + String(pct).padStart(3, ' ') + '%' +
+      (ok ? '  DONE' : '  → ' + Math.round(f.target * 100) + '%');
+    drawText(label, x, 44 + i * 20, 14, ok ? '#9be87d' : '#e8f1dd', 'left');
+  }
+  drawText('REFILLS  ' + refillsLeft, x, 44 + CONTRACT_FIELDS.length * 20 + 4, 14, '#ffe08a', 'left');
+}
+
+function drawTankGauge() {
+  const w = 230;
+  const h = 12;
+  const x = 14;
+  const y = viewH - 96;
+  const frac = tank.current / tank.capacity;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.fillStyle = frac > 0.25 ? '#7ec850' : '#e08030';
+  ctx.fillRect(x, y, w * frac, h);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+}
+
+function drawEndScreen() {
+  const parts = scoreParts();
+  if (state === 'COMPLETE') {
+    drawText('CONTRACT COMPLETE', viewW / 2, viewH * 0.3, 52, '#9be87d');
+    drawText('Score  ' + parts.total, viewW / 2, viewH * 0.42, 34, '#ffffff');
+    drawText(
+      'Coverage ' + parts.coverage + ' / 600      Efficiency ' + parts.efficiency +
+      ' / 200      Time ' + parts.time + ' / 200',
+      viewW / 2, viewH * 0.52, 18, '#e8f1dd'
+    );
+    drawText('Best  ' + bestScore, viewW / 2, viewH * 0.6, 20, '#ffe08a');
+  } else {
+    drawText('CONTRACT FAILED', viewW / 2, viewH * 0.3, 52, '#ff9070');
+    drawText(failReason, viewW / 2, viewH * 0.42, 24, '#ffffff');
+    drawText(
+      'Contract  ' + contractDoneCount() + '/' + CONTRACT_FIELDS.length +
+      ' fields      Score  ' + parts.total,
+      viewW / 2, viewH * 0.52, 18, '#e8f1dd'
+    );
+  }
+  drawText('R — new contract      Esc — title', viewW / 2, viewH * 0.72, 18, 'rgba(255, 255, 255, 0.75)');
+}
+
 let fps = 0;
 let frames = 0;
 let fpsElapsed = 0;
@@ -451,8 +608,12 @@ function render() {
 
   if (state === 'TITLE') {
     drawTitle();
+  } else if (state === 'COMPLETE' || state === 'FAILED') {
+    drawEndScreen();
   } else {
     drawDebug();
+    drawContractPanel();
+    drawTankGauge();
     drawRefillPrompt();
     drawMinimap();
   }

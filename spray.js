@@ -1,6 +1,7 @@
 'use strict';
 
 const TANK_CAPACITY = 120000;
+const REFILL_BUDGET = 3;
 const SPRAY_RATE = 900;
 const EMIT_PER_SEC = 40;
 const PARTICLE_FALL = 4.5;
@@ -14,6 +15,7 @@ const WET_GAP = 0.6;
 
 const tank = { capacity: TANK_CAPACITY, current: TANK_CAPACITY };
 const sprayStats = { released: 0, deposited: 0, missed: 0 };
+let refillsLeft = REFILL_BUDGET;
 
 const particles = [];
 let emitAcc = 0;
@@ -122,9 +124,13 @@ function updateSpray(dt) {
     plane.z > RUNWAY.z0 - 5 &&
     plane.z < RUNWAY.z1 + 5;
 
-  if (inRunway && plane.speed < 3 && tank.current < tank.capacity) {
+  if (inRunway && plane.speed < 3 && tank.current < tank.capacity && refillsLeft > 0) {
+    const before = tank.current;
     tank.current = Math.min(tank.capacity, tank.current + tank.capacity * 0.25 * dt);
     refilling = true;
+    if (tank.current >= tank.capacity && before < tank.capacity) {
+      refillsLeft -= 1;
+    }
   } else {
     refilling = false;
   }
@@ -136,6 +142,7 @@ function resetSpray() {
   sprayStats.released = 0;
   sprayStats.deposited = 0;
   sprayStats.missed = 0;
+  refillsLeft = REFILL_BUDGET;
   emitAcc = 0;
   refilling = false;
   for (let i = 0; i < fields.length; i++) {
@@ -202,5 +209,5 @@ function drawParticles(c) {
 function drawRefillPrompt() {
   if (!refilling) return;
   const pct = Math.round((tank.current / tank.capacity) * 100);
-  drawText('Refilling tank — ' + pct + '%', viewW / 2, viewH * 0.78, 22, '#ffffff');
+  drawText('Refilling tank — ' + pct + '%  (' + refillsLeft + ' refills left)', viewW / 2, viewH * 0.78, 22, '#ffffff');
 }
