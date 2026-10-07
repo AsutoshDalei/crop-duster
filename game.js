@@ -87,10 +87,10 @@ function wrapAngle(a) {
 }
 
 function resetFlight() {
-  plane.x = 0;
-  plane.y = 0;
-  plane.z = 0;
-  plane.heading = 0;
+  plane.x = START.x;
+  plane.y = START.y;
+  plane.z = START.z;
+  plane.heading = START.heading;
   plane.speed = 0;
   plane.vs = 0;
   plane.throttle = 0;
@@ -154,6 +154,10 @@ function update(dt) {
     plane.y = 0;
     if (plane.vs < 0) plane.vs = 0;
   }
+  if (plane.x < WORLD.minX + 40) plane.x = WORLD.minX + 40;
+  if (plane.x > WORLD.maxX - 40) plane.x = WORLD.maxX - 40;
+  if (plane.z < WORLD.minZ + 40) plane.z = WORLD.minZ + 40;
+  if (plane.z > WORLD.maxZ - 40) plane.z = WORLD.maxZ - 40;
 
   const tx = plane.x - Math.sin(plane.heading) * CAM_BACK;
   const ty = plane.y + CAM_HEIGHT;
@@ -302,37 +306,6 @@ function drawSky(c) {
   ctx.fillRect(0, Math.max(0, horizonY), viewW, viewH - Math.max(0, horizonY));
 }
 
-function drawGround(c) {
-  const i0 = Math.floor((c.px - DRAW_DIST) / CELL);
-  const i1 = Math.floor((c.px + DRAW_DIST) / CELL);
-  const j0 = Math.floor((c.pz - DRAW_DIST) / CELL);
-  const j1 = Math.floor((c.pz + DRAW_DIST) / CELL);
-
-  for (let j = j1; j >= j0; j--) {
-    for (let i = i1; i >= i0; i--) {
-      const x0 = i * CELL;
-      const x1 = x0 + CELL;
-      const z0 = j * CELL;
-      const z1 = z0 + CELL;
-
-      const cxw = (x0 + x1) / 2;
-      const czw = (z0 + z1) / 2;
-      const dx = cxw - c.px;
-      const dz = czw - c.pz;
-      const dist = Math.sqrt(dx * dx + dz * dz + c.py * c.py);
-      if (dist > DRAW_DIST + CELL) continue;
-
-      const base = ((i + j) & 1) === 0 ? GROUND_A : GROUND_B;
-      fillWorldPoly(c, [
-        [x0, 0, z0],
-        [x1, 0, z0],
-        [x1, 0, z1],
-        [x0, 0, z1]
-      ], base, dist);
-    }
-  }
-}
-
 function drawShadow(c) {
   const p = toCamera(c, plane.x, 0.1, plane.z);
   if (p.z < NEAR) return;
@@ -416,7 +389,7 @@ function drawTitle() {
   drawText('Press Enter to start', viewW / 2, viewH * 0.47, 26, '#f4f7ef');
   drawText('W / S  altitude     A / D  lateral', viewW / 2, viewH * 0.58, 20, '#e8f1dd');
   drawText('↑ / ↓  throttle     Space  spray', viewW / 2, viewH * 0.63, 20, '#e8f1dd');
-  drawText('Stage 1 — free flight test build', viewW / 2, viewH * 0.9, 15, 'rgba(255, 255, 255, 0.7)');
+  drawText('Stage 2 — world preview', viewW / 2, viewH * 0.9, 15, 'rgba(255, 255, 255, 0.7)');
 }
 
 function formatTime(seconds) {
@@ -461,7 +434,9 @@ function render() {
   const c = makeCam();
 
   drawSky(c);
-  drawGround(c);
+  drawTerrain(c);
+  drawSurfaces(c);
+  drawProps(c);
   drawShadow(c);
   drawPlaneShape(c);
 
@@ -469,6 +444,7 @@ function render() {
     drawTitle();
   } else {
     drawDebug();
+    drawMinimap();
   }
 
   ctx.font = '14px ' + FONT_STACK;
