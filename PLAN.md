@@ -230,6 +230,7 @@ is: no build step, no external dependencies.)*
 | Performance with many projected polygons | 5 | Distance culling, fog cutoff, field simplification with distance, particle caps |
 | Scope creep | all | Stages are ordered so the game is runnable and demonstrable after every stage |
 | Deployment surprises | 0 | Enable and verify GitHub Pages at the very start, not at the end |
+| GitHub push failures (transient 500s) | all | Commit locally first, push later — see §8 Git Push Policy |
 
 ---
 
@@ -242,7 +243,27 @@ is: no build step, no external dependencies.)*
 
 ---
 
-## 8. Status
+## 8. Git Push Policy (GitHub outages)
+
+GitHub can return transient errors on push (e.g. `remote: Internal Server Error`,
+HTTP 500) even while its status page reports all systems operational. Policy:
+
+- **Always commit locally first.** A local commit is the source of truth; work is
+  never blocked on GitHub being reachable.
+- **If `git push origin main` fails:** do not retry indefinitely — retry a couple
+  of times with short backoff, then stop. Record that there are unpushed commits
+  and continue with the next task.
+- **To check what is pending:** `git status` shows how far `main` is ahead of
+  `origin/main`; `git log origin/main..HEAD --oneline` lists the unpushed commits.
+- **Push later, once GitHub recovers:** at the start of the next session or the
+  next natural checkpoint, run `git push origin main` to flush all accumulated
+  commits, then confirm with `git status` that local and remote match.
+- Local commits do not affect GitHub Pages; the live site simply stays on the
+  last pushed commit until the next successful push.
+
+---
+
+## 9. Status
 
 | Stage | Status |
 |---|---|
